@@ -1,0 +1,47 @@
+{
+  "name": "ai-information-radar-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "build:cloud": "tsx scripts/prepare-cloud-prisma.ts && prisma generate --schema .prisma-cloud/schema.prisma && next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:generate:cloud": "tsx scripts/prepare-cloud-prisma.ts && prisma generate --schema .prisma-cloud/schema.prisma",
+    "prisma:db:push:cloud": "tsx scripts/prepare-cloud-prisma.ts && prisma db push --schema .prisma-cloud/schema.prisma",
+    "prisma:migrate": "prisma migrate dev",
+    "schedules:run-due": "tsx scripts/run-due-schedules.ts",
+    "mobile:init": "node scripts/mobile-init.cjs",
+    "mobile:sync": "npx cap sync android",
+    "mobile:open": "npx cap open android",
+    "mobile:run": "npx cap run android",
+    "mobile:build:debug": "cd android && ./gradlew assembleDebug",
+    "mobile:build:debug:win": "cd android && gradlew.bat assembleDebug",
+    "android:check": "tsx scripts/check-android-env.ts",
+    "ui:audit": "tsx scripts/ui-audit.ts",
+    "cloud:check": "tsx scripts/check-cloud-deploy.ts"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
+    "@prisma/client": "6.10.1",
+    "lucide-react": "^0.468.0",
+    "next": "^15.3.4",
+    "openai": "^4.104.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.10",
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "prisma": "6.10.1",
+    "tailwindcss": "^4.1.10",
+    "tsx": "^4.22.4",
+    "typescript": "^5.8.3"
+  }
+}

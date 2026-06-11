@@ -1,0 +1,2 @@
+This directory is kept for Capacitor sync.
+The APK preview loads the running Next.js app through capacitor.config.ts server.url.

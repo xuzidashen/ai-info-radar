@@ -1,0 +1,14 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">AI Information Radar Mark</title>
+  <desc id="desc">A minimal radar mark with circular orbits and an information signal dot.</desc>
+  <rect width="256" height="256" rx="64" fill="#F7FBFC"/>
+  <circle cx="128" cy="128" r="86" fill="#E8F6F4"/>
+  <circle cx="128" cy="128" r="66" stroke="#0F172A" stroke-width="10"/>
+  <circle cx="128" cy="128" r="37" stroke="#12A594" stroke-width="10"/>
+  <path d="M128 128L181 77" stroke="#0F172A" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="184" cy="74" r="14" fill="#12A594" stroke="#0F172A" stroke-width="8"/>
+  <path d="M74 128H93" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M163 128H182" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M128 74V93" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M128 163V182" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+</svg>

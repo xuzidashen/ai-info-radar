@@ -1,0 +1,377 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Keyword {
+  id             String     @id @default(cuid())
+  name           String     @unique
+  category       String
+  description    String?
+  lastSearchedAt DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  infoItems      InfoItem[]
+  summaries      Summary[]
+  dailySignals   DailySignal[]
+  zoneTopics     ZoneTopic[]
+
+  @@index([category])
+  @@index([createdAt])
+}
+
+model InfoItem {
+  id          String   @id @default(cuid())
+  title       String
+  source      String
+  url         String
+  publishedAt DateTime
+  summary     String
+  importance  String
+  sentiment   String
+  provider    String   @default("mock")
+  score       Float?
+  rawContent  String?
+  fetchedAt   DateTime?
+  credibilityScore  Float?
+  credibilityLabel  String?
+  credibilityReason String?
+  eventType     String?
+  eventSubtype  String?
+  sentimentScore Float?
+  impactScore   Float?
+  riskScore     Float?
+  policyScore   Float?
+  techScore     Float?
+  financialScore Float?
+  attentionScore Float?
+  timeHorizon   String?
+  factorConfidence Float?
+  factorReason  String?
+  relatedCompanies String?
+  relatedIndustries String?
+  keywordId   String
+  createdAt   DateTime @default(now())
+  keyword     Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([keywordId])
+  @@index([importance])
+  @@index([publishedAt])
+  @@index([provider])
+  @@index([credibilityLabel])
+  @@index([eventType])
+  @@index([riskScore])
+  @@index([attentionScore])
+}
+
+model Summary {
+  id        String   @id @default(cuid())
+  keywordId String
+  content   String
+  provider  String   @default("mock")
+  createdAt DateTime @default(now())
+  keyword   Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([keywordId])
+  @@index([createdAt])
+  @@index([provider])
+}
+
+model DailySignal {
+  id               String   @id @default(cuid())
+  keywordId        String
+  date             DateTime
+  newsCount        Int      @default(0)
+  positiveCount    Int      @default(0)
+  negativeCount    Int      @default(0)
+  neutralCount     Int      @default(0)
+  avgSentiment     Float?
+  avgImpact        Float?
+  avgRisk          Float?
+  avgPolicy        Float?
+  avgTech          Float?
+  avgFinancial     Float?
+  avgAttention     Float?
+  avgConfidence    Float?
+  signalLevel      String
+  riskLevel        String
+  attentionLevel   String
+  summary          String?
+  factorSnapshot   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  keyword          Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([keywordId, date])
+  @@index([keywordId])
+  @@index([date])
+  @@index([signalLevel])
+  @@index([riskLevel])
+  @@index([attentionLevel])
+}
+
+model WorkspaceZone {
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  description String?
+  icon        String?
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  topics      ZoneTopic[]
+  reports     ZoneReport[]
+  runLogs     TopicRunLog[]
+  schedules   TopicSchedule[]
+
+  @@index([type])
+}
+
+model ZoneTopic {
+  id              String   @id @default(cuid())
+  zoneId          String
+  keywordId       String?
+  name            String
+  category        String
+  description     String?
+  searchMode      String
+  summaryTemplate String?
+  analysisEnabled Boolean  @default(false)
+  factorEnabled   Boolean  @default(false)
+  linkageEnabled  Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  zone             WorkspaceZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  keyword          Keyword?      @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  moduleLinks      LinkageModule[]
+  linkageAnalyses  LinkageAnalysis[]
+  runLogs          TopicRunLog[]
+  schedules        TopicSchedule[]
+
+  @@index([zoneId])
+  @@index([keywordId])
+}
+
+model ZoneReport {
+  id        String   @id @default(cuid())
+  zoneId    String
+  runLogId  String?
+  title     String
+  type      String
+  markdown  String
+  summary   String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  zone      WorkspaceZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  runLog    TopicRunLog?  @relation(fields: [runLogId], references: [id], onDelete: SetNull)
+  favorite  ReportFavorite?
+  tagLinks  ZoneReportTag[]
+
+  @@index([zoneId])
+  @@index([runLogId])
+  @@index([createdAt])
+}
+
+model LinkageModule {
+  id          String   @id @default(cuid())
+  topicId     String
+  name        String
+  role        String
+  description String?
+  weight      Float?   @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  topic         ZoneTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  outgoingEdges LinkageEdge[] @relation("LinkageFrom")
+  incomingEdges LinkageEdge[] @relation("LinkageTo")
+
+  @@index([topicId])
+}
+
+model LinkageEdge {
+  id            String   @id @default(cuid())
+  fromModuleId  String
+  toModuleId    String
+  relationType  String
+  strength      Float?
+  direction     String?
+  reason        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  fromModule LinkageModule @relation("LinkageFrom", fields: [fromModuleId], references: [id], onDelete: Cascade)
+  toModule   LinkageModule @relation("LinkageTo", fields: [toModuleId], references: [id], onDelete: Cascade)
+
+  @@index([fromModuleId])
+  @@index([toModuleId])
+}
+
+model LinkageAnalysis {
+  id           String   @id @default(cuid())
+  topicId      String
+  title        String
+  markdown     String
+  linkageScore Float?
+  riskScore    Float?
+  confidence   Float?
+  keyPaths     String?
+  assumptions  String?
+  warnings     String?
+  createdAt    DateTime @default(now())
+
+  topic        ZoneTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([createdAt])
+}
+
+model TopicRunLog {
+  id              String   @id @default(cuid())
+  topicId         String?
+  zoneId          String?
+  parentRunLogId  String?
+  runType         String
+  triggerType     String
+  status          String
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  durationMs      Int?
+
+  searchProvider  String?
+  summaryProvider String?
+  factorProvider  String?
+  linkageProvider String?
+
+  fallbackUsed    Boolean  @default(false)
+  errorMessage    String?
+
+  rawResultCount  Int      @default(0)
+  filteredCount   Int      @default(0)
+  dedupedCount    Int      @default(0)
+  savedItemCount  Int      @default(0)
+  reportCount     Int      @default(0)
+
+  qualityScore    Float?
+  qualityLabel    String?
+  qualityReason   String?
+  retryCount      Int      @default(0)
+
+  metadata        String?
+
+  zone            WorkspaceZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  topic           ZoneTopic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  reports         ZoneReport[]
+  parentRunLog    TopicRunLog?   @relation("RunLogRetryChain", fields: [parentRunLogId], references: [id], onDelete: SetNull)
+  retryRuns       TopicRunLog[]  @relation("RunLogRetryChain")
+
+  @@index([topicId])
+  @@index([zoneId])
+  @@index([parentRunLogId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model TopicSchedule {
+  id          String   @id @default(cuid())
+  topicId     String
+  zoneId      String
+  name        String
+  enabled     Boolean  @default(true)
+
+  frequency   String
+  hour        Int?
+  minute      Int?
+  dayOfWeek   Int?
+  timezone    String   @default("Asia/Shanghai")
+
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  topic       ZoneTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  zone        WorkspaceZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([zoneId])
+  @@index([enabled])
+  @@index([nextRunAt])
+}
+
+model ProviderQualitySnapshot {
+  id             String   @id @default(cuid())
+  providerType   String
+  providerName   String
+  success        Boolean
+  fallbackUsed   Boolean @default(false)
+  latencyMs      Int?
+  resultCount    Int?
+  errorMessage   String?
+  qualityScore   Float?
+  estimatedCost  Float?
+  inputTokens    Int?
+  outputTokens   Int?
+  createdAt      DateTime @default(now())
+
+  @@index([providerType])
+  @@index([providerName])
+  @@index([createdAt])
+}
+
+model AppNotification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  message   String
+  severity  String
+  read      Boolean  @default(false)
+
+  zoneId    String?
+  topicId   String?
+  runLogId  String?
+  reportId  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([read])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model ReportTag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String?
+  createdAt DateTime @default(now())
+
+  reportLinks ZoneReportTag[]
+}
+
+model ReportFavorite {
+  id        String   @id @default(cuid())
+  reportId  String   @unique
+  createdAt DateTime @default(now())
+
+  report    ZoneReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model ZoneReportTag {
+  id        String @id @default(cuid())
+  reportId  String
+  tagId     String
+
+  report    ZoneReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  tag       ReportTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, tagId])
+  @@index([reportId])
+  @@index([tagId])
+}

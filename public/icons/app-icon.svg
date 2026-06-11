@@ -1,0 +1,14 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">AI 信息雷达 App Icon</title>
+  <desc id="desc">Self-owned app icon for the local APK and web product.</desc>
+  <rect width="512" height="512" rx="124" fill="#F8FBFC"/>
+  <circle cx="256" cy="256" r="170" fill="#E8F6F4"/>
+  <circle cx="256" cy="256" r="130" stroke="#0F172A" stroke-width="24"/>
+  <circle cx="256" cy="256" r="72" stroke="#12A594" stroke-width="22"/>
+  <path d="M256 256L363 151" stroke="#0F172A" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="369" cy="145" r="28" fill="#12A594" stroke="#0F172A" stroke-width="18"/>
+  <path d="M148 256H184" stroke="#94A3B8" stroke-width="18" stroke-linecap="round"/>
+  <path d="M328 256H364" stroke="#94A3B8" stroke-width="18" stroke-linecap="round"/>
+  <path d="M256 148V184" stroke="#94A3B8" stroke-width="18" stroke-linecap="round"/>
+  <path d="M256 328V364" stroke="#94A3B8" stroke-width="18" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg width="1080" height="1920" viewBox="0 0 1080 1920" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">AI 信息雷达 Light Splash</title>
+  <desc id="desc">Light launch screen with radar mark and product name.</desc>
+  <rect width="1080" height="1920" fill="#F7FBFC"/>
+  <circle cx="540" cy="840" r="210" fill="#E8F6F4"/>
+  <circle cx="540" cy="840" r="156" stroke="#0F172A" stroke-width="26"/>
+  <circle cx="540" cy="840" r="88" stroke="#12A594" stroke-width="24"/>
+  <path d="M540 840L670 710" stroke="#0F172A" stroke-width="30" stroke-linecap="round"/>
+  <circle cx="678" cy="702" r="30" fill="#12A594" stroke="#0F172A" stroke-width="18"/>
+  <text x="540" y="1148" text-anchor="middle" fill="#0F172A" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800">AI 信息雷达</text>
+  <text x="540" y="1208" text-anchor="middle" fill="#64748B" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" letter-spacing="4">MULTI-ZONE INTELLIGENCE HUB</text>
+</svg>

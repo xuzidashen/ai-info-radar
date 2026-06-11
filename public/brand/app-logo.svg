@@ -1,0 +1,16 @@
+<svg width="720" height="180" viewBox="0 0 720 180" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">AI 信息雷达 Logo</title>
+  <desc id="desc">Product logo with a radar mark and bilingual product name.</desc>
+  <rect width="720" height="180" rx="36" fill="#F7FBFC"/>
+  <g transform="translate(34 34)">
+    <rect width="112" height="112" rx="32" fill="#E8F6F4"/>
+    <circle cx="56" cy="56" r="36" stroke="#0F172A" stroke-width="8"/>
+    <circle cx="56" cy="56" r="20" stroke="#12A594" stroke-width="7"/>
+    <path d="M56 56L85 27" stroke="#0F172A" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="87" cy="25" r="9" fill="#12A594" stroke="#0F172A" stroke-width="6"/>
+  </g>
+  <text x="176" y="82" fill="#0F172A" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="800">AI 信息雷达</text>
+  <text x="178" y="120" fill="#475569" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" letter-spacing="3">MULTI-ZONE INTELLIGENCE HUB</text>
+  <path d="M576 59C604 59 627 82 627 110" stroke="#12A594" stroke-width="8" stroke-linecap="round"/>
+  <path d="M577 84C591 84 602 96 602 110" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+</svg>
