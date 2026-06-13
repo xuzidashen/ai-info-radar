@@ -1,15 +1,12 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build:cloud",
-  "functions": {
-    "app/api/**/route.ts": {
-      "maxDuration": 60
+    "experimentalServices": {
+        "frontend": {
+            "routePrefix": "/",
+            "framework": "nextjs"
+        },
+        "backend": {
+            "root": "backend",
+            "routePrefix": "/_/backend"
+        }
     }
-  },
-  "crons": [
-    {
-      "path": "/api/schedules/run-due",
-      "schedule": "0 0 * * *"
-    }
-  ]
 }
