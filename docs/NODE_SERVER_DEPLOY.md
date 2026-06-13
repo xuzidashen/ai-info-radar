@@ -4,12 +4,17 @@ VPS / 云服务器适合以常驻 Node 进程运行。
 
 ## 基础步骤
 
+配置 PostgreSQL `DATABASE_URL` 后执行：
+
 ```bash
 npm install
-npx prisma migrate deploy
+npx prisma generate
+npx prisma db push
 npm run build
 npm run start
 ```
+
+旧 migrations 是 SQLite 历史，不要对 PostgreSQL 执行 `npx prisma migrate deploy`。后续稳定后再建立 PostgreSQL migration baseline。
 
 建议使用 PM2：
 
@@ -26,6 +31,7 @@ pm2 save
 APP_ENV="cloud"
 APP_BASE_URL="https://your-domain.com"
 NEXT_PUBLIC_MOBILE_BASE_URL="https://your-domain.com"
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
 ```
 
 ## Cron
@@ -44,4 +50,4 @@ curl https://your-domain.com/api/schedules/run-due -H "x-cron-secret: your_secre
 
 ## Database
 
-VPS 可以短期使用 SQLite，但长期建议 PostgreSQL，尤其是有多设备访问、定时任务和报告积累时。
+长期部署使用 PostgreSQL，尤其是有多设备访问、定时任务和报告积累时。不要把真实 `DATABASE_URL` 写入代码或提交到 GitHub。

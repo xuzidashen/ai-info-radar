@@ -1,23 +1,36 @@
 # Deployment
 
-AI 信息雷达支持两种模式。
+AI 信息雷达当前默认按 PostgreSQL 部署。
 
-## local
+## Local
 
 - `APP_ENV=local`
-- `DATABASE_PROVIDER=sqlite`
-- `DATABASE_URL=file:../data/dev.db`
+- `DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require`
 - Provider 可保持 mock。
 - APK 可通过 `CAPACITOR_SERVER_URL=http://LAN_IP:3000` 指向本地开发机。
 
-## cloud
+本地开发建议直接使用 Neon 或本地 PostgreSQL。不要在默认 `prisma/schema.prisma` 里切回 SQLite。
+
+## Cloud
 
 - `APP_ENV=cloud`
-- 推荐 `DATABASE_PROVIDER=postgres`
-- 使用 HTTPS 域名配置 `APP_BASE_URL` 和 `NEXT_PUBLIC_MOBILE_BASE_URL`
+- `APP_BASE_URL=https://aileida.zh.kg`
+- `NEXT_PUBLIC_MOBILE_BASE_URL=https://aileida.zh.kg`
+- `DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require`
 - 配置 `TAVILY_API_KEY`、`DEEPSEEK_API_KEY`
 - 配置 `APP_ADMIN_TOKEN`、`INTERNAL_API_SECRET` 或 `CRON_SECRET`
 - 设置 `ENABLE_PUBLIC_ACCESS=false`
+
+`DATABASE_PROVIDER` 是可选旧标志位，Prisma 不依赖它。
+
+## Database
+
+旧 migrations 是 SQLite 生成的 SQL，不要对 Neon 执行 `npx prisma migrate deploy`。新空库先手动初始化：
+
+```powershell
+npx prisma generate
+npx prisma db push
+```
 
 ## Health Check
 

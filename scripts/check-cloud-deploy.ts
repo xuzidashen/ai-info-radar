@@ -95,7 +95,7 @@ const checks: Check[] = [];
 const appEnv = process.env.APP_ENV || "local";
 const appBaseUrl = process.env.APP_BASE_URL || "";
 const mobileBaseUrl = process.env.NEXT_PUBLIC_MOBILE_BASE_URL || "";
-const databaseProvider = process.env.DATABASE_PROVIDER || "sqlite";
+const databaseProvider = process.env.DATABASE_PROVIDER || "";
 const databaseUrl = process.env.DATABASE_URL || "";
 const capacitorServerUrl = inferMobileUrl();
 const capacitorConfig = existsSync(join(root, "capacitor.config.ts"))
@@ -128,10 +128,10 @@ add(
 
 add(
   checks,
-  databaseProvider === "postgres" ? "pass" : "danger",
+  !databaseProvider || databaseProvider === "postgres" ? "pass" : "warning",
   "DATABASE_PROVIDER",
-  databaseProvider,
-  "云端多人同步必须使用 PostgreSQL：DATABASE_PROVIDER=postgres。"
+  databaseProvider || "not set",
+  "这是可选的历史标志位；Prisma 现在只看 PostgreSQL 的 DATABASE_URL。可不设置。"
 );
 
 add(

@@ -177,7 +177,7 @@ npm run mobile:build:debug:win
 ```env
 APP_ENV="local"
 APP_BASE_URL="http://localhost:3000"
-DATABASE_PROVIDER="sqlite"
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
 APP_ADMIN_TOKEN=""
 INTERNAL_API_SECRET=""
 ENABLE_PUBLIC_ACCESS="false"
@@ -238,13 +238,14 @@ http://localhost:3000
 
 ## 环境变量
 
-默认 mock 模式：
+云端 / 默认 mock 模式：
 
 ```env
-DATABASE_URL="file:../data/dev.db"
-DATABASE_PROVIDER="sqlite"
-APP_ENV="local"
-APP_BASE_URL="http://localhost:3000"
+APP_ENV="cloud"
+APP_BASE_URL="https://aileida.zh.kg"
+NEXT_PUBLIC_MOBILE_BASE_URL="https://aileida.zh.kg"
+
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
 
 SEARCH_PROVIDER="mock"
 SUMMARY_PROVIDER="mock"
@@ -258,12 +259,13 @@ ENABLE_PUBLIC_ACCESS="false"
 ENABLE_SETUP_WIZARD="true"
 DEFAULT_TIMEZONE="Asia/Shanghai"
 CAPACITOR_SERVER_URL=""
-NEXT_PUBLIC_MOBILE_BASE_URL=""
 
 TAVILY_API_KEY=""
 DEEPSEEK_API_KEY=""
 DEEPSEEK_MODEL="deepseek-v4-flash"
 ```
+
+`DATABASE_PROVIDER` 只可能作为旧文档或健康检查说明出现，Prisma schema 不依赖它。不要把真实 `DATABASE_URL` 提交到 GitHub，也不要截图公开。
 
 真实 API 模式：
 
@@ -674,27 +676,55 @@ GitHub Pages 只能托管静态页面，不适合完整系统。本项目依赖�
 
 1. 在 Vercel 新建项目并导入当前仓库。
 2. Framework 选择 Next.js。
-3. Build Command 使用仓库里的 `vercel.json`：`npm run build:cloud`。
+3. Build Command 使用 `npm run build`。
 4. 部署前先配置 Environment Variables。
 
-`build:cloud` 会临时生成 PostgreSQL Prisma schema。原因是 Prisma datasource provider 不能可靠地用 `env()` 动态切换；本地保留 SQLite，云端构建切到 PostgreSQL。
+Vercel 构建只运行 `prisma generate` 和 `next build`，不要在 build 阶段强制执行 `prisma db push`。
 
 ### PostgreSQL 配置
 
 创建 Neon / Supabase / Railway Postgres 后，在 Vercel 配置：
 
 ```env
-DATABASE_PROVIDER="postgres"
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
 ```
+
+之前 `npx prisma migrate deploy` 报 P1012，是因为 `prisma/schema.prisma` 写死 SQLite，而 Neon 的连接串是 `postgresql://...`。SQLite provider 要求 `DATABASE_URL` 以 `file:` 开头，两者不匹配。
+
+当前修复方案：
+
+- 默认 `prisma/schema.prisma` 改为 PostgreSQL。
+- 云端 Neon 通过 `DATABASE_URL` 提供连接。
+- 当前 Neon 是新库，先用 `npx prisma db push` 从 schema 初始化空库。
 
 首次初始化云端数据库：
 
 ```powershell
-npm run prisma:db:push:cloud
+npx prisma generate
+npx prisma db push
 ```
 
-当前历史 migrations 是 SQLite 迁移，不直接用于 PostgreSQL。后续稳定多人版本可建立 PostgreSQL migration baseline。
+CMD：
+
+```cmd
+cd /d "D:\vibe ing\shousuo"
+set "DATABASE_URL=你的 Neon PostgreSQL 连接串"
+npx prisma generate
+npx prisma db push
+```
+
+PowerShell：
+
+```powershell
+cd "D:\vibe ing\shousuo"
+$env:DATABASE_URL="你的 Neon PostgreSQL 连接串"
+npx prisma generate
+npx prisma db push
+```
+
+当前历史 migrations 是 SQLite 迁移，包含 `PRAGMA` 等 SQLite SQL，不直接用于 PostgreSQL。后续稳定多人版本可建立 PostgreSQL migration baseline。
+
+不要把 `DATABASE_URL` 提交到 GitHub，不要截图公开 `DATABASE_URL`，并确保 Vercel Environment Variables 里已配置它。
 
 ### Vercel 环境变量
 
@@ -703,7 +733,6 @@ APP_ENV="cloud"
 APP_BASE_URL="https://aileida.zh.kg"
 NEXT_PUBLIC_MOBILE_BASE_URL="https://aileida.zh.kg"
 
-DATABASE_PROVIDER="postgres"
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
 
 SEARCH_PROVIDER="tavily"
@@ -761,7 +790,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 npm run cloud:check
 ```
 
-这个脚本会检查 `APP_ENV`、`APP_BASE_URL`、`NEXT_PUBLIC_MOBILE_BASE_URL`、`DATABASE_PROVIDER`、`DATABASE_URL`、Provider Key、`CRON_SECRET`、`INTERNAL_API_SECRET`、`APP_ADMIN_TOKEN` 和 Capacitor URL 是否仍指向 `10.0.2.2`。
+这个脚本会检查 `APP_ENV`、`APP_BASE_URL`、`NEXT_PUBLIC_MOBILE_BASE_URL`、`DATABASE_URL`、Provider Key、`CRON_SECRET`、`INTERNAL_API_SECRET`、`APP_ADMIN_TOKEN` 和 Capacitor URL 是否仍指向 `10.0.2.2`。`DATABASE_PROVIDER` 只是可选的旧标志位，不影响 Prisma schema。
 
 ### 验证同步
 

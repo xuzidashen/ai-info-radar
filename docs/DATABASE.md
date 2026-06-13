@@ -1,52 +1,57 @@
 # Database
 
-## SQLite
+## Default Target
 
-本地默认使用 SQLite：
+The default Prisma schema is now PostgreSQL for Vercel + Neon deployment:
 
-```env
-DATABASE_PROVIDER="sqlite"
-DATABASE_URL="file:../data/dev.db"
+```prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 ```
 
-优点是简单、无需额外服务。缺点是不适合多人并发和 Serverless 持久化。
+Prisma datasource `provider` is not switched with `env()`. Do not use `provider = env("DATABASE_PROVIDER")`.
 
-## PostgreSQL
+## Why `migrate deploy` Failed
 
-云端部署建议使用 PostgreSQL：
+The old schema used `provider = "sqlite"`, while Neon provides a `postgresql://...` connection string. SQLite requires `DATABASE_URL` to start with `file:`, so Prisma raised P1012.
 
-```env
-DATABASE_PROVIDER="postgres"
-DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
-```
+The existing `prisma/migrations` history was generated for SQLite. It includes SQLite-only SQL such as `PRAGMA`, `DATETIME`, and `REAL`, and `migration_lock.toml` says `provider = "sqlite"`. Do not run those migrations against Neon.
 
-可选服务：
+## Initialize A New Neon Database
 
-- Neon Postgres
-- Supabase Postgres
-- Railway Postgres
-
-在云端初始化数据库时执行：
+For the current empty cloud database, initialize from the Prisma schema:
 
 ```powershell
-npm run prisma:db:push:cloud
+npx prisma generate
+npx prisma db push
 ```
 
-原因：当前仓库已有 SQLite migrations，不能直接拿这些 SQL 在 PostgreSQL 上 `migrate deploy`。本轮保留本地 SQLite migrations，不删除历史迁移；云端初始库先用 PostgreSQL schema 执行 `db push`，后续正式多人版本再单独建立 PostgreSQL migration baseline。
+After the cloud database is stable, create a fresh PostgreSQL migration baseline for future schema changes.
 
-## 迁移注意
+## Commands
 
-当前 `prisma/schema.prisma` 保持本地 SQLite 兼容。Prisma datasource `provider` 不能可靠地通过 `env()` 动态切换，所以云端构建使用：
+CMD:
+
+```cmd
+cd /d "D:\vibe ing\shousuo"
+set "DATABASE_URL=你的 Neon PostgreSQL 连接串"
+npx prisma generate
+npx prisma db push
+```
+
+PowerShell:
 
 ```powershell
-npm run build:cloud
+cd "D:\vibe ing\shousuo"
+$env:DATABASE_URL="你的 Neon PostgreSQL 连接串"
+npx prisma generate
+npx prisma db push
 ```
 
-该命令会执行 `scripts/prepare-cloud-prisma.ts`，临时生成 `.prisma-cloud/schema.prisma`，将 datasource provider 改为 PostgreSQL，再运行 Prisma Client generate 和 Next.js build。
+## Safety
 
-未来从 SQLite 数据迁移到 PostgreSQL 可采用：
+Do not commit `DATABASE_URL` to GitHub. Do not post screenshots that expose it. Put the same PostgreSQL `DATABASE_URL` in Vercel Environment Variables.
 
-1. 导出 SQLite 数据。
-2. 在 PostgreSQL 执行 Prisma migration。
-3. 编写一次性导入脚本映射 Keyword、InfoItem、Summary、ZoneReport、RunLog 等表。
-4. 校验报告数量、运行日志数量和标签关系。
+Local development should use Neon or another PostgreSQL database. If you need SQLite as a reference later, keep it in a separate schema such as `prisma/schema.sqlite.prisma`; do not mix providers in `prisma/schema.prisma`.
