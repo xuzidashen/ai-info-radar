@@ -2,6 +2,7 @@ import { ChevronDown, ExternalLink, Gauge } from "lucide-react";
 
 import { FactorBadge } from "@/components/FactorBadge";
 import type { InfoItemDTO, Importance, Sentiment } from "@/lib/types";
+import { buildScoreReason, formatDisplayScore } from "@/lib/utils/itemScoring";
 
 const importanceLabels: Record<Importance, string> = {
   high: "高优先级",
@@ -51,24 +52,16 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function formatSearchScore(value: number | null) {
-  if (typeof value !== "number") {
-    return null;
-  }
-
-  return `${Math.round(value * 100)}%`;
-}
-
 function formatCredibilityScore(value: number | null) {
   if (typeof value !== "number") {
     return "";
   }
 
-  return ` ${Math.round(value * 100)}%`;
+  return ` ${Math.round(value * 100) / 10}/10`;
 }
 
 export function InfoItemCard({ item }: { item: InfoItemDTO }) {
-  const score = formatSearchScore(item.score);
+  const score = formatDisplayScore(item.score, item.importance);
   const credibilityLabel = item.credibilityLabel ?? "unknown";
   const hasFactor = typeof item.impactScore === "number" || typeof item.factorConfidence === "number";
 
@@ -86,12 +79,10 @@ export function InfoItemCard({ item }: { item: InfoItemDTO }) {
             <span className="rounded-full border border-ink-950/10 bg-white px-2.5 py-1 text-xs font-black text-ink-700">
               {item.provider}
             </span>
-            {score ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-radar-500/10 px-2.5 py-1 text-xs font-black text-radar-600">
-                <Gauge className="h-3 w-3" />
-                {score}
-              </span>
-            ) : null}
+            <span className="inline-flex items-center gap-1 rounded-full bg-radar-500/10 px-2.5 py-1 text-xs font-black text-radar-600">
+              <Gauge className="h-3 w-3" />
+              评分 {score}
+            </span>
             <span className={`rounded-full px-2.5 py-1 text-xs font-black ${credibilityClasses[credibilityLabel]}`}>
               {credibilityLabels[credibilityLabel]}
               {formatCredibilityScore(item.credibilityScore)}
@@ -111,6 +102,17 @@ export function InfoItemCard({ item }: { item: InfoItemDTO }) {
       </div>
 
       <p className="mt-4 text-sm leading-7 text-ink-700">{item.summary}</p>
+
+      <div className="mt-4 grid gap-2 rounded-xl border border-ink-950/8 bg-white/65 p-3 text-xs font-bold text-ink-700 sm:grid-cols-2">
+        <p>
+          <span className="text-ink-950">评分理由：</span>
+          {buildScoreReason(item)}
+        </p>
+        <p>
+          <span className="text-ink-950">发布时间：</span>
+          {formatDate(item.publishedAt)}
+        </p>
+      </div>
 
       {item.credibilityReason ? (
         <p className="mt-3 rounded-xl border border-ink-950/8 bg-white/65 p-3 text-xs font-bold leading-6 text-ink-700">
@@ -174,4 +176,3 @@ export function InfoItemCard({ item }: { item: InfoItemDTO }) {
     </article>
   );
 }
-

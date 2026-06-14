@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Plus, RefreshCw, Workflow } from "lucide-react";
+import { ArrowLeft, Plus, RefreshCw, Sparkles, Workflow } from "lucide-react";
 
 import { TemplatePreview } from "@/components/TemplatePreview";
 import { ZoneHero } from "@/components/brand/ZoneHero";
@@ -190,10 +190,16 @@ export default function ZoneDetailPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-white/80 bg-white/88 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] backdrop-blur-xl">
         <p className="text-sm font-bold leading-6 text-slate-500">{profile.subtitle}</p>
-        <ActionButton type="button" variant="secondary" onClick={() => void loadZone()}>
-          <RefreshCw className="h-4 w-4" />
-          刷新
-        </ActionButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionButton href={`/zones/${zone.id}/topics/new`} variant="primary">
+            <Sparkles className="h-4 w-4" />
+            Topic 向导
+          </ActionButton>
+          <ActionButton type="button" variant="secondary" onClick={() => void loadZone()}>
+            <RefreshCw className="h-4 w-4" />
+            刷新
+          </ActionButton>
+        </div>
       </div>
 
       {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{error}</div> : null}
@@ -205,7 +211,16 @@ export default function ZoneDetailPage() {
       ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[0.86fr_1.14fr]">
-        <SectionCard title={profile.createTitle} description={profile.topicDescription}>
+        <SectionCard
+          title={profile.createTitle}
+          description={profile.topicDescription}
+          actions={
+            <ActionButton href={`/zones/${zone.id}/topics/new`} variant="secondary" size="sm">
+              <Sparkles className="h-4 w-4" />
+              用向导推荐
+            </ActionButton>
+          }
+        >
           <form onSubmit={handleCreateTopic} className="space-y-4">
             <label className="block">
               <span className="text-sm font-bold text-slate-500">Topic 名称</span>

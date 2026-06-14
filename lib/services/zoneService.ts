@@ -306,6 +306,9 @@ export async function createZoneTopic(
     description?: string | null;
     searchMode: SearchMode;
     summaryTemplate?: string | null;
+    analysisEnabled?: boolean;
+    factorEnabled?: boolean;
+    linkageEnabled?: boolean;
   }
 ) {
   const zone = await prisma.workspaceZone.findUnique({
@@ -324,9 +327,9 @@ export async function createZoneTopic(
       description: input.description ?? null,
       searchMode: input.searchMode,
       summaryTemplate: input.summaryTemplate ?? null,
-      analysisEnabled: zone.type === "analysis",
-      factorEnabled: zone.type === "analysis",
-      linkageEnabled: zone.type === "linkage"
+      analysisEnabled: input.analysisEnabled ?? zone.type === "analysis",
+      factorEnabled: input.factorEnabled ?? zone.type === "analysis",
+      linkageEnabled: input.linkageEnabled ?? zone.type === "linkage"
     },
     include: {
       keyword: {

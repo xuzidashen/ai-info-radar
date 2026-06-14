@@ -30,6 +30,9 @@ export async function POST(request: Request, context: RouteContext) {
       description?: unknown;
       searchMode?: unknown;
       summaryTemplate?: unknown;
+      analysisEnabled?: unknown;
+      factorEnabled?: unknown;
+      linkageEnabled?: unknown;
     };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const category = typeof body.category === "string" && body.category.trim() ? body.category.trim() : "自定义";
@@ -47,7 +50,10 @@ export async function POST(request: Request, context: RouteContext) {
       category,
       description: typeof body.description === "string" ? body.description.trim() || null : null,
       searchMode: body.searchMode,
-      summaryTemplate: typeof body.summaryTemplate === "string" ? body.summaryTemplate.trim() || null : null
+      summaryTemplate: typeof body.summaryTemplate === "string" ? body.summaryTemplate.trim() || null : null,
+      analysisEnabled: typeof body.analysisEnabled === "boolean" ? body.analysisEnabled : undefined,
+      factorEnabled: typeof body.factorEnabled === "boolean" ? body.factorEnabled : undefined,
+      linkageEnabled: typeof body.linkageEnabled === "boolean" ? body.linkageEnabled : undefined
     });
 
     return NextResponse.json({ topic }, { status: 201 });
@@ -56,4 +62,3 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "创建 Topic 失败" }, { status: 500 });
   }
 }
-

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { serializeReportTag, serializeZoneReport } from "@/lib/serializers";
+import { serializeInfoItem, serializeReportTag, serializeZoneReport } from "@/lib/serializers";
 import { buildMarkdownPackage } from "@/lib/utils/markdownPackage";
 import type { ZoneReportType } from "@/lib/types";
 
@@ -119,6 +119,90 @@ export async function getReportById(id: string) {
           triggerType: report.runLog.triggerType
         }
       : null
+  };
+}
+
+function parseReportMetadata(value: string | null): {
+  topicId?: string;
+  keywordId?: string;
+  itemCount?: number;
+  averageScore?: number | null;
+  topTags?: string[];
+  fallbackUsed?: boolean;
+  searchProvider?: string;
+  summaryProvider?: string;
+  factorProvider?: string;
+} {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+
+    return {
+      topicId: typeof parsed.topicId === "string" ? parsed.topicId : undefined,
+      keywordId: typeof parsed.keywordId === "string" ? parsed.keywordId : undefined,
+      itemCount: typeof parsed.itemCount === "number" ? parsed.itemCount : undefined,
+      averageScore: typeof parsed.averageScore === "number" ? parsed.averageScore : null,
+      topTags: Array.isArray(parsed.topTags) ? parsed.topTags.filter((tag): tag is string => typeof tag === "string") : undefined,
+      fallbackUsed: typeof parsed.fallbackUsed === "boolean" ? parsed.fallbackUsed : undefined,
+      searchProvider: typeof parsed.searchProvider === "string" ? parsed.searchProvider : undefined,
+      summaryProvider: typeof parsed.summaryProvider === "string" ? parsed.summaryProvider : undefined,
+      factorProvider: typeof parsed.factorProvider === "string" ? parsed.factorProvider : undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
+export async function getReportDetailContext(id: string) {
+  const report = await getReportById(id);
+
+  if (!report) {
+    return null;
+  }
+
+  const metadata = parseReportMetadata(report.metadata);
+  const [topic, keyword, infoItems] = await Promise.all([
+    metadata.topicId
+      ? prisma.zoneTopic.findUnique({
+          where: { id: metadata.topicId }
+        })
+      : Promise.resolve(null),
+    metadata.keywordId
+      ? prisma.keyword.findUnique({
+          where: { id: metadata.keywordId }
+        })
+      : Promise.resolve(null),
+    metadata.keywordId
+      ? prisma.infoItem.findMany({
+          where: { keywordId: metadata.keywordId },
+          orderBy: [{ createdAt: "desc" }, { publishedAt: "desc" }],
+          take: Math.max(metadata.itemCount ?? 8, 8)
+        })
+      : Promise.resolve([])
+  ]);
+
+  return {
+    report,
+    metadata,
+    topic: topic
+      ? {
+          id: topic.id,
+          name: topic.name,
+          category: topic.category,
+          searchMode: topic.searchMode
+        }
+      : null,
+    keyword: keyword
+      ? {
+          id: keyword.id,
+          name: keyword.name,
+          category: keyword.category
+        }
+      : null,
+    infoItems: infoItems.map(serializeInfoItem)
   };
 }
 

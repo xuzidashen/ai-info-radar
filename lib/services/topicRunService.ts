@@ -17,11 +17,12 @@ import {
   markRunSuccess,
   type RunLogMetrics
 } from "@/lib/services/runLogService";
-import { buildReportMarkdown, createZoneReport, withDisclaimer } from "@/lib/services/zoneReportService";
-import { getDefaultTemplate } from "@/lib/templates/summaryTemplates";
+import { buildReportMarkdown, createZoneReport } from "@/lib/services/zoneReportService";
+import { getDefaultTemplate, getTemplateById } from "@/lib/templates/summaryTemplates";
 import type { Importance, KeywordCategory, SearchMode, Sentiment, TopicRunTriggerType, TopicRunType } from "@/lib/types";
 import { dedupeResults } from "@/lib/utils/dedupeResults";
 import { filterResults } from "@/lib/utils/filterResults";
+import { buildScoreReason, deriveItemTags, toDisplayScore } from "@/lib/utils/itemScoring";
 import { getSourceCredibility } from "@/lib/utils/sourceCredibility";
 
 type EnrichedSearchResult = NormalizedSearchResult & {
@@ -107,6 +108,131 @@ function inferImportance(index: number, score?: number | null): Importance {
   }
 
   return pick(importancePool);
+}
+
+function shouldGenerateReport(topic: {
+  summaryTemplate: string | null;
+  description?: string | null;
+}) {
+  return !topic.description?.includes("报告生成 关闭");
+}
+
+function getItemDisplayScore(item: InfoItem) {
+  return toDisplayScore(item.score, item.importance as Importance | string | null);
+}
+
+function averageScore(items: InfoItem[]) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const total = items.reduce((sum, item) => sum + getItemDisplayScore(item), 0);
+  return Math.round((total / items.length) * 10) / 10;
+}
+
+function collectTopTags(items: InfoItem[], category: string, searchProvider: string) {
+  const tags = new Set<string>();
+
+  if (category.trim()) {
+    tags.add(category.trim());
+  }
+
+  for (const item of items) {
+    for (const tag of deriveItemTags({
+      importance: item.importance,
+      eventType: item.eventType,
+      eventSubtype: item.eventSubtype,
+      relatedIndustries: item.relatedIndustries,
+      provider: item.provider
+    })) {
+      tags.add(tag);
+      if (tags.size >= 8) {
+        return Array.from(tags);
+      }
+    }
+  }
+
+  if (searchProvider) {
+    tags.add(searchProvider);
+  }
+
+  return Array.from(tags).slice(0, 8);
+}
+
+function buildReportSources(items: InfoItem[], category: string) {
+  return [...items]
+    .sort((a, b) => getItemDisplayScore(b) - getItemDisplayScore(a))
+    .map((item) => ({
+      title: item.title,
+      source: item.source,
+      url: item.url,
+      score: getItemDisplayScore(item),
+      scoreReason: buildScoreReason({
+        score: item.score,
+        importance: item.importance,
+        factorReason: item.factorReason,
+        credibilityReason: item.credibilityReason,
+        summary: item.summary
+      }),
+      tags: deriveItemTags(
+        {
+          importance: item.importance,
+          eventType: item.eventType,
+          eventSubtype: item.eventSubtype,
+          relatedIndustries: item.relatedIndustries,
+          provider: item.provider
+        },
+        category
+      ),
+      summary: item.summary
+    }));
+}
+
+function buildReportMetadata(input: {
+  topicId: string;
+  keywordId: string;
+  searchProvider: string;
+  summaryProvider: string;
+  factorProvider?: string | null;
+  fallbackUsed: boolean | undefined;
+  runLogId: string;
+  items: InfoItem[];
+  category: string;
+}) {
+  const sources = buildReportSources(input.items, input.category);
+
+  return {
+    topicId: input.topicId,
+    keywordId: input.keywordId,
+    searchProvider: input.searchProvider,
+    summaryProvider: input.summaryProvider,
+    factorProvider: input.factorProvider ?? undefined,
+    fallbackUsed: Boolean(input.fallbackUsed),
+    runLogId: input.runLogId,
+    itemCount: input.items.length,
+    averageScore: averageScore(input.items),
+    topTags: collectTopTags(input.items, input.category, input.searchProvider),
+    highScoreItems: sources.slice(0, 5).map((source) => ({
+      title: source.title,
+      source: source.source,
+      url: source.url,
+      score: source.score,
+      scoreReason: source.scoreReason,
+      tags: source.tags
+    }))
+  };
+}
+
+async function reloadItemsByIds(items: InfoItem[]) {
+  if (items.length === 0) {
+    return items;
+  }
+
+  const ids = items.map((item) => item.id);
+  return prisma.infoItem.findMany({
+    where: { id: { in: ids } },
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
+  });
 }
 
 function processSearchWithCounts(results: NormalizedSearchResult[], keywordName: string) {
@@ -582,8 +708,13 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       topic,
       keywordId: keyword.id
     });
-    const template = getDefaultTemplate(topic.zone.type as "search" | "analysis", topic.searchMode as SearchMode);
+    const selectedTemplate = getTemplateById(topic.summaryTemplate);
+    const template =
+      selectedTemplate?.zoneType === topic.zone.type
+        ? selectedTemplate
+        : getDefaultTemplate(topic.zone.type as "search" | "analysis", topic.searchMode as SearchMode);
     const reportTitle = `${topic.name} ${topic.zone.type === "analysis" ? "AI 分析报告" : "信息检索简报"}`;
+    const reportEnabled = shouldGenerateReport(topic);
 
     metrics = {
       searchProvider: commonRun.searchRun.provider,
@@ -593,9 +724,11 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       filteredCount: commonRun.searchRun.filteredCount,
       dedupedCount: commonRun.searchRun.dedupedCount,
       savedItemCount: commonRun.savedItems.length,
-      reportCount: 1,
+      reportCount: reportEnabled ? 1 : 0,
       metadata: {
+        topicId: topic.id,
         keywordId: keyword.id,
+        reportEnabled,
         scheduleId: options.scheduleId,
         retryOfRunLogId: options.retryOfRunLogId
       }
@@ -613,43 +746,55 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         factorProvider: factor.factorRun.provider,
         fallbackUsed: Boolean(metrics.fallbackUsed || factor.factorRun.fallbackUsed)
       };
-      const markdown = buildReportMarkdown({
-        title: reportTitle,
-        summary: commonRun.summaryRun.content,
-        sources: commonRun.savedItems.map((item) => ({
-          title: item.title,
-          source: item.source,
-          url: item.url
-        })),
-        extraSections: [
-          {
-            title: "因子信号",
-            body: factor.dailySignal.summary ?? "现有来源不足以形成因子信号。"
-          },
-          {
-            title: "模板",
-            body: template.sections.map((section) => `【${section}】`).join("\n")
-          }
-        ],
-        disclaimer: commonRun.keywordCategory === "finance"
-      });
-      const report = await createZoneReport({
-        zoneId: topic.zoneId,
+      const reportItems = await reloadItemsByIds(commonRun.savedItems);
+      const reportSources = buildReportSources(reportItems, topic.category);
+      const reportMetadata = buildReportMetadata({
+        topicId: topic.id,
+        keywordId: keyword.id,
+        searchProvider: commonRun.searchRun.provider,
+        summaryProvider: commonRun.summaryRun.provider,
+        factorProvider: factor.factorRun.provider,
+        fallbackUsed: metrics.fallbackUsed,
         runLogId: runLog.id,
-        title: reportTitle,
-        type: "topic",
-        markdown,
-        summary: commonRun.summaryRun.content.slice(0, 500),
-        metadata: {
-          topicId: topic.id,
-          keywordId: keyword.id,
-          searchProvider: commonRun.searchRun.provider,
-          summaryProvider: commonRun.summaryRun.provider,
-          factorProvider: factor.factorRun.provider,
-          fallbackUsed: metrics.fallbackUsed,
-          runLogId: runLog.id
-        }
+        items: reportItems,
+        category: topic.category
       });
+      metrics = {
+        ...metrics,
+        metadata: {
+          ...(reportMetadata as Record<string, unknown>),
+          reportEnabled,
+          scheduleId: options.scheduleId,
+          retryOfRunLogId: options.retryOfRunLogId
+        }
+      };
+      const report = reportEnabled
+        ? await createZoneReport({
+            zoneId: topic.zoneId,
+            runLogId: runLog.id,
+            title: reportTitle,
+            type: "topic",
+            markdown: buildReportMarkdown({
+              title: reportTitle,
+              summary: commonRun.summaryRun.content,
+              sources: reportSources,
+              extraSections: [
+                {
+                  title: "因子信号",
+                  body: factor.dailySignal.summary ?? "现有来源不足以形成因子信号。"
+                },
+                {
+                  title: "模板",
+                  body: template.sections.map((section) => `【${section}】`).join("\n")
+                }
+              ],
+              followUp: "继续观察高分信息对应的官方公告、产业链反馈和风险信号；财经主题仅做公开信息整理。",
+              disclaimer: commonRun.keywordCategory === "finance"
+            }),
+            summary: commonRun.summaryRun.content.slice(0, 500),
+            metadata: reportMetadata
+          })
+        : null;
 
       await prisma.zoneTopic.update({
         where: { id: topic.id },
@@ -661,7 +806,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       return {
         mode: "analysis" as const,
         report,
-        infoItems: commonRun.savedItems.map(serializeInfoItem),
+        infoItems: reportItems.map(serializeInfoItem),
         summary: serializeSummary(commonRun.savedSummary),
         dailySignal: serializeDailySignal(factor.dailySignal),
         fallbackUsed: metrics.fallbackUsed,
@@ -669,40 +814,49 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       };
     }
 
-    const markdown = withDisclaimer(
-      buildReportMarkdown({
-        title: reportTitle,
-        summary: commonRun.summaryRun.content,
-        sources: commonRun.savedItems.map((item) => ({
-          title: item.title,
-          source: item.source,
-          url: item.url
-        })),
-        extraSections: [
-          {
-            title: "模板",
-            body: template.sections.map((section) => `【${section}】`).join("\n")
-          }
-        ]
-      }),
-      false
-    );
-    const report = await createZoneReport({
-      zoneId: topic.zoneId,
+    const reportItems = await reloadItemsByIds(commonRun.savedItems);
+    const reportSources = buildReportSources(reportItems, topic.category);
+    const reportMetadata = buildReportMetadata({
+      topicId: topic.id,
+      keywordId: keyword.id,
+      searchProvider: commonRun.searchRun.provider,
+      summaryProvider: commonRun.summaryRun.provider,
+      fallbackUsed: metrics.fallbackUsed,
       runLogId: runLog.id,
-      title: reportTitle,
-      type: "topic",
-      markdown,
-      summary: commonRun.summaryRun.content.slice(0, 500),
-      metadata: {
-        topicId: topic.id,
-        keywordId: keyword.id,
-        searchProvider: commonRun.searchRun.provider,
-        summaryProvider: commonRun.summaryRun.provider,
-        fallbackUsed: metrics.fallbackUsed,
-        runLogId: runLog.id
-      }
+      items: reportItems,
+      category: topic.category
     });
+    metrics = {
+      ...metrics,
+      metadata: {
+        ...(reportMetadata as Record<string, unknown>),
+        reportEnabled,
+        scheduleId: options.scheduleId,
+        retryOfRunLogId: options.retryOfRunLogId
+      }
+    };
+    const report = reportEnabled
+      ? await createZoneReport({
+          zoneId: topic.zoneId,
+          runLogId: runLog.id,
+          title: reportTitle,
+          type: "topic",
+          markdown: buildReportMarkdown({
+            title: reportTitle,
+            summary: commonRun.summaryRun.content,
+            sources: reportSources,
+            extraSections: [
+              {
+                title: "模板",
+                body: template.sections.map((section) => `【${section}】`).join("\n")
+              }
+            ],
+            followUp: "继续跟踪高可信来源、发布时间较新的内容和后续官方更新。"
+          }),
+          summary: commonRun.summaryRun.content.slice(0, 500),
+          metadata: reportMetadata
+        })
+      : null;
 
     await prisma.zoneTopic.update({
       where: { id: topic.id },
@@ -714,7 +868,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
     return {
       mode: "search" as const,
       report,
-      infoItems: commonRun.savedItems.map(serializeInfoItem),
+      infoItems: reportItems.map(serializeInfoItem),
       summary: serializeSummary(commonRun.savedSummary),
       fallbackUsed: metrics.fallbackUsed,
       runLog: savedRunLog
