@@ -24,6 +24,7 @@ import { dedupeResults } from "@/lib/utils/dedupeResults";
 import { filterResults } from "@/lib/utils/filterResults";
 import { buildScoreReason, deriveItemTags, toDisplayScore } from "@/lib/utils/itemScoring";
 import { getSourceCredibility } from "@/lib/utils/sourceCredibility";
+import { buildTopicSearchContext } from "@/lib/utils/topicPresetContext";
 
 type EnrichedSearchResult = NormalizedSearchResult & {
   credibility: {
@@ -198,6 +199,9 @@ function buildReportMetadata(input: {
   runLogId: string;
   items: InfoItem[];
   category: string;
+  queryText?: string;
+  keywords?: string[];
+  presetNames?: string[];
 }) {
   const sources = buildReportSources(input.items, input.category);
 
@@ -212,6 +216,9 @@ function buildReportMetadata(input: {
     itemCount: input.items.length,
     averageScore: averageScore(input.items),
     topTags: collectTopTags(input.items, input.category, input.searchProvider),
+    queryText: input.queryText,
+    keywords: input.keywords ?? [],
+    presetNames: input.presetNames ?? [],
     highScoreItems: sources.slice(0, 5).map((source) => ({
       title: source.title,
       source: source.source,
@@ -221,6 +228,54 @@ function buildReportMetadata(input: {
       tags: source.tags
     }))
   };
+}
+
+function buildPipelineStages(input: {
+  rawResultCount: number;
+  filteredCount: number;
+  dedupedCount: number;
+  savedItemCount: number;
+  summaryLength?: number;
+  reportCount: number;
+  factorCount?: number;
+}) {
+  return [
+    {
+      stage: "search",
+      status: "success",
+      inputCount: 1,
+      outputCount: input.rawResultCount,
+      detail: "SearchProvider 返回原始搜索结果。"
+    },
+    {
+      stage: "dedupe",
+      status: "success",
+      inputCount: input.filteredCount,
+      outputCount: input.dedupedCount,
+      detail: "质量过滤和去重后保留高质量来源。"
+    },
+    {
+      stage: "score",
+      status: "success",
+      inputCount: input.dedupedCount,
+      outputCount: input.savedItemCount,
+      detail: input.factorCount ? `完成 ${input.factorCount} 条因子评分。` : "完成来源可信度和 0-10 展示评分。"
+    },
+    {
+      stage: "summarize",
+      status: "success",
+      inputCount: input.savedItemCount,
+      outputCount: input.summaryLength ?? 0,
+      detail: "SummaryProvider 生成结构化总结。"
+    },
+    {
+      stage: "report",
+      status: input.reportCount > 0 ? "success" : "skipped",
+      inputCount: input.savedItemCount,
+      outputCount: input.reportCount,
+      detail: input.reportCount > 0 ? "ZoneReport 已写入报告中心。" : "本 Topic 关闭了报告生成。"
+    }
+  ];
 }
 
 async function reloadItemsByIds(items: InfoItem[]) {
@@ -257,6 +312,7 @@ async function runSearchWithQualityFallback(input: {
   keywordName: string;
   category: KeywordCategory;
   description?: string | null;
+  queryText?: string | null;
 }): Promise<SearchWithQuality> {
   const startedAt = Date.now();
   const searchRun = await runSearchProvider({
@@ -370,10 +426,12 @@ async function saveSearchAndSummary(input: {
   keywordId: string;
 }) {
   const keywordCategory = mapSearchModeToCategory(input.topic.searchMode as SearchMode, input.topic.category);
+  const searchContext = buildTopicSearchContext(input.topic);
   const searchRun = await runSearchWithQualityFallback({
-    keywordName: input.topic.name,
+    keywordName: searchContext.primaryKeyword,
     category: keywordCategory,
-    description: input.topic.description
+    description: searchContext.description,
+    queryText: searchContext.queryText
   });
   const now = new Date();
 
@@ -417,7 +475,7 @@ async function saveSearchAndSummary(input: {
     keyword: {
       name: input.topic.name,
       category: keywordCategory,
-      description: input.topic.description
+      description: searchContext.description
     },
     infoItems: savedItems.map((item) => ({
       title: item.title,
@@ -456,7 +514,8 @@ async function saveSearchAndSummary(input: {
     summaryRun,
     savedItems,
     savedSummary,
-    keywordCategory
+    keywordCategory,
+    searchContext
   };
 }
 
@@ -729,6 +788,9 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         topicId: topic.id,
         keywordId: keyword.id,
         reportEnabled,
+        queryText: commonRun.searchContext.queryText,
+        keywords: commonRun.searchContext.keywords,
+        presetNames: commonRun.searchContext.presetNames,
         scheduleId: options.scheduleId,
         retryOfRunLogId: options.retryOfRunLogId
       }
@@ -748,6 +810,15 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       };
       const reportItems = await reloadItemsByIds(commonRun.savedItems);
       const reportSources = buildReportSources(reportItems, topic.category);
+      const pipelineStages = buildPipelineStages({
+        rawResultCount: commonRun.searchRun.rawResultCount,
+        filteredCount: commonRun.searchRun.filteredCount,
+        dedupedCount: commonRun.searchRun.dedupedCount,
+        savedItemCount: reportItems.length,
+        summaryLength: commonRun.summaryRun.content.length,
+        factorCount: factor.factorRun.itemFactors.length,
+        reportCount: reportEnabled ? 1 : 0
+      });
       const reportMetadata = buildReportMetadata({
         topicId: topic.id,
         keywordId: keyword.id,
@@ -757,13 +828,17 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         fallbackUsed: metrics.fallbackUsed,
         runLogId: runLog.id,
         items: reportItems,
-        category: topic.category
+        category: topic.category,
+        queryText: commonRun.searchContext.queryText,
+        keywords: commonRun.searchContext.keywords,
+        presetNames: commonRun.searchContext.presetNames
       });
       metrics = {
         ...metrics,
         metadata: {
           ...(reportMetadata as Record<string, unknown>),
           reportEnabled,
+          pipelineStages,
           scheduleId: options.scheduleId,
           retryOfRunLogId: options.retryOfRunLogId
         }
@@ -792,7 +867,11 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
               disclaimer: commonRun.keywordCategory === "finance"
             }),
             summary: commonRun.summaryRun.content.slice(0, 500),
-            metadata: reportMetadata
+            metadata: {
+              ...reportMetadata,
+              reportEnabled,
+              pipelineStages
+            }
           })
         : null;
 
@@ -816,6 +895,14 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
 
     const reportItems = await reloadItemsByIds(commonRun.savedItems);
     const reportSources = buildReportSources(reportItems, topic.category);
+    const pipelineStages = buildPipelineStages({
+      rawResultCount: commonRun.searchRun.rawResultCount,
+      filteredCount: commonRun.searchRun.filteredCount,
+      dedupedCount: commonRun.searchRun.dedupedCount,
+      savedItemCount: reportItems.length,
+      summaryLength: commonRun.summaryRun.content.length,
+      reportCount: reportEnabled ? 1 : 0
+    });
     const reportMetadata = buildReportMetadata({
       topicId: topic.id,
       keywordId: keyword.id,
@@ -824,13 +911,17 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       fallbackUsed: metrics.fallbackUsed,
       runLogId: runLog.id,
       items: reportItems,
-      category: topic.category
+      category: topic.category,
+      queryText: commonRun.searchContext.queryText,
+      keywords: commonRun.searchContext.keywords,
+      presetNames: commonRun.searchContext.presetNames
     });
     metrics = {
       ...metrics,
       metadata: {
         ...(reportMetadata as Record<string, unknown>),
         reportEnabled,
+        pipelineStages,
         scheduleId: options.scheduleId,
         retryOfRunLogId: options.retryOfRunLogId
       }
@@ -854,7 +945,11 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
             followUp: "继续跟踪高可信来源、发布时间较新的内容和后续官方更新。"
           }),
           summary: commonRun.summaryRun.content.slice(0, 500),
-          metadata: reportMetadata
+          metadata: {
+            ...reportMetadata,
+            reportEnabled,
+            pipelineStages
+          }
         })
       : null;
 

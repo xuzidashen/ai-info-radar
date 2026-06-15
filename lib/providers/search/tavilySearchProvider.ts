@@ -66,9 +66,9 @@ export class TavilySearchProvider implements SearchProvider {
         Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        query: input.description
+        query: input.queryText || (input.description
           ? `${input.keywordName} ${input.description}`
-          : input.keywordName,
+          : input.keywordName),
         topic: resolveTopic(input.category),
         time_range: resolveTimeRange(input.category, input.timeRange),
         max_results: input.maxResults ?? 8,

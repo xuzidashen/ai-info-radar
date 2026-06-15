@@ -57,7 +57,7 @@ export default async function ReportDetailPage({ params }: PageProps) {
   const highScoreItems = [...infoItems]
     .sort((a, b) => toDisplayScore(b.score, b.importance) - toDisplayScore(a.score, a.importance))
     .slice(0, 5);
-  const backgroundItems = infoItems.slice(0, 3);
+  const sourceItems = infoItems.slice(0, 8);
   const followUp = report.type === "linkage" ? "继续跟踪关键路径、上游变化和风险断点，避免把假设写成结论。" : "继续跟踪高可信来源、官方公告和后续更新；信息不足时不要扩展出未出现的事实。";
 
   return (
@@ -173,9 +173,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
         </SectionCard>
 
         <SectionCard title="来源列表" description="按当前报告中整理出的来源与标签快速回看。">
-          {backgroundItems.length > 0 ? (
+          {sourceItems.length > 0 ? (
             <div className="grid gap-3">
-              {backgroundItems.map((item) => (
+              {sourceItems.map((item) => (
                 <article key={item.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/88 p-4">
                   <h3 className="text-sm font-black leading-6 text-slate-950">{item.title}</h3>
                   <p className="mt-1 text-xs font-bold text-slate-500">{item.source}</p>

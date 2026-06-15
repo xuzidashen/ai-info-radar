@@ -8,7 +8,7 @@ export const productCopy = {
     title: "AI 信息雷达",
     subtitle: "多专区信息工作台",
     description: "洞察信息趋势，掌握关键先机。把检索、分析、联动和报告沉淀放在一个清晰、长期可用的个人工作台里。",
-    ctaLabel: "开始探索"
+    ctaLabel: "开始创建 Topic"
   },
   compliance: "以上内容仅为公开信息整理和辅助研究，不构成投资建议。"
 } as const;

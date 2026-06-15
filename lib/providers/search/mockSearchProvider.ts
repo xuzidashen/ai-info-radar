@@ -7,7 +7,8 @@ export class MockSearchProvider implements SearchProvider {
   async search(input: SearchProviderInput): Promise<SearchProviderResult> {
     const results = generateMockInfoItems({
       name: input.keywordName,
-      category: input.category
+      category: input.category,
+      description: input.description || input.queryText
     })
       .slice(0, input.maxResults ?? 5)
       .map((item, index) => ({

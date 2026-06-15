@@ -8,6 +8,7 @@ export type SearchProviderInput = {
   keywordName: string;
   category: KeywordCategory;
   description?: string | null;
+  queryText?: string | null;
   maxResults?: number;
   timeRange?: SearchTimeRange;
 };

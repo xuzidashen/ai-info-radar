@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleDot, FileText } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { RetryRunButton } from "@/components/RetryRunButton";
@@ -55,6 +55,27 @@ function metadataText(value: string | null) {
   }
 }
 
+function pipelineStages(value: string | null) {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as { pipelineStages?: Array<Record<string, unknown>> };
+    return Array.isArray(parsed.pipelineStages)
+      ? parsed.pipelineStages.map((stage) => ({
+          stage: typeof stage.stage === "string" ? stage.stage : "unknown",
+          status: typeof stage.status === "string" ? stage.status : "unknown",
+          inputCount: typeof stage.inputCount === "number" ? stage.inputCount : 0,
+          outputCount: typeof stage.outputCount === "number" ? stage.outputCount : 0,
+          detail: typeof stage.detail === "string" ? stage.detail : ""
+        }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function RunDetailPage({ params }: PageProps) {
   const { id } = await params;
   const log = await getRunLogDetail(id);
@@ -64,6 +85,7 @@ export default async function RunDetailPage({ params }: PageProps) {
   }
 
   const retryPolicy = await getRetryPolicyForRunLog(log);
+  const stages = pipelineStages(log.metadata);
 
   return (
     <AppContainer size="xl">
@@ -128,6 +150,30 @@ export default async function RunDetailPage({ params }: PageProps) {
           )}
         </SectionCard>
       </section>
+
+      <SectionCard title="Pipeline 阶段" description="本次运行的 search / dedupe / score / summarize / report 阶段。">
+        {stages.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-5">
+            {stages.map((stage) => (
+              <article key={stage.stage} className="rounded-2xl border border-slate-200/70 bg-slate-50/88 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-black text-slate-950">{stage.stage}</h3>
+                  {stage.status === "success" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <CircleDot className="h-4 w-4 text-slate-400" />}
+                </div>
+                <StatusPill tone={stage.status === "success" ? "success" : "neutral"} className="mt-3">
+                  {stage.status}
+                </StatusPill>
+                <p className="mt-3 text-xs font-bold text-slate-500">
+                  输入 {stage.inputCount} / 输出 {stage.outputCount}
+                </p>
+                {stage.detail ? <p className="mt-2 text-xs font-bold leading-5 text-slate-600">{stage.detail}</p> : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="暂无阶段明细" description="新的 Topic 运行会记录 search、dedupe、score、summarize、report 阶段。" />
+        )}
+      </SectionCard>
 
       <SectionCard title="Metadata" description="调度 ID、重试来源、keywordId 等扩展追踪字段。">
         <pre className="max-h-[26rem] overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-200/70 bg-slate-50/88 p-4 text-sm leading-7 text-slate-600">

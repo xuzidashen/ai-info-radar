@@ -27,11 +27,11 @@ import {
   inferSearchModeFromPresets,
   matchSourcePresets,
   sourcePresetCategoryLabels,
-  sourcePresetTypeLabels,
-  type SourcePreset
+  sourcePresetTypeLabels
 } from "@/lib/sourcePresets";
 import { summaryTemplates } from "@/lib/templates/summaryTemplates";
 import { searchModeLabels, searchModes, zoneTypeLabels, type SearchMode, type ZoneDetailDTO } from "@/lib/types";
+import { buildTopicDescription } from "@/lib/utils/topicPresetContext";
 
 type ZoneResponse = {
   zone?: ZoneDetailDTO;
@@ -55,25 +55,6 @@ function defaultTemplateId(zoneType?: ZoneDetailDTO["type"], searchMode?: Search
     summaryTemplates.find((template) => template.zoneType === zoneType)?.id ??
     "news"
   );
-}
-
-function buildDescription(input: {
-  base: string;
-  interest: string;
-  keywords: string[];
-  presets: SourcePreset[];
-  aiScoring: boolean;
-  reportEnabled: boolean;
-}) {
-  const blocks = [
-    input.base.trim(),
-    input.interest.trim() ? `关注描述：${input.interest.trim()}` : "",
-    input.keywords.length ? `推荐关键词：${input.keywords.join("、")}` : "",
-    input.presets.length ? `推荐信息源：${input.presets.map((preset) => `${preset.name}（${sourcePresetTypeLabels[preset.sourceType]}）`).join("；")}` : "",
-    `向导偏好：AI 评分 ${input.aiScoring ? "启用" : "关闭"}；报告生成 ${input.reportEnabled ? "启用" : "关闭"}`
-  ].filter(Boolean);
-
-  return blocks.join("\n");
 }
 
 export default function NewTopicWizardPage() {
@@ -166,7 +147,7 @@ export default function NewTopicWizardPage() {
     setError(null);
 
     try {
-      const bodyDescription = buildDescription({
+      const bodyDescription = buildTopicDescription({
         base: description,
         interest,
         keywords: selectedKeywords,
@@ -395,7 +376,7 @@ export default function NewTopicWizardPage() {
 
           <SectionCard
             title="确认保存"
-          description="保存后会创建 Topic，并跳转到详情页。关闭报告生成时仍会保存来源和 AI 总结。"
+            description="保存后会创建 Topic，并跳转到详情页。关闭报告生成时仍会保存来源和 AI 总结。"
             actions={
               <ActionButton type="button" loading={saving} disabled={!topicName.trim() && selectedKeywords.length === 0} onClick={() => void saveTopic()}>
                 <Save className="h-4 w-4" />

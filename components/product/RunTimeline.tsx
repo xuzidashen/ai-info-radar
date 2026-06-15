@@ -15,6 +15,26 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function pipelineLabels(metadata: string | null) {
+  if (!metadata) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(metadata) as { pipelineStages?: Array<{ stage?: unknown; status?: unknown }> };
+    return Array.isArray(parsed.pipelineStages)
+      ? parsed.pipelineStages
+          .map((stage) => ({
+            stage: typeof stage.stage === "string" ? stage.stage : "",
+            status: typeof stage.status === "string" ? stage.status : ""
+          }))
+          .filter((stage) => stage.stage)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export function RunTimeline({ logs }: { logs: TopicRunLogDTO[] }) {
   if (!logs.length) {
     return (
@@ -45,6 +65,20 @@ export function RunTimeline({ logs }: { logs: TopicRunLogDTO[] }) {
                 </div>
                 <h3 className="mt-3 text-lg font-black text-slate-950">{log.topic?.name ?? "未知 Topic"}</h3>
                 <p className="mt-1 text-sm font-bold text-slate-500">{log.zone?.name ?? "未知专区"} / {formatDate(log.startedAt)}</p>
+                {pipelineLabels(log.metadata).length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {pipelineLabels(log.metadata).map((stage) => (
+                      <span
+                        key={`${log.id}-${stage.stage}`}
+                        className={`rounded-full border px-2 py-1 text-[11px] font-black ${
+                          stage.status === "skipped" ? "border-slate-200 bg-slate-50 text-slate-500" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {stage.stage}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <div className="grid gap-2 text-sm sm:grid-cols-4 xl:w-[34rem]">
                 <Metric label="耗时" value={log.durationMs ? `${log.durationMs}ms` : "运行中"} />

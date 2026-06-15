@@ -21,7 +21,7 @@ export type EnvHealthCheck = {
   }>;
 };
 
-const recommendedDomain = "https://aileida.zh.kg";
+const recommendedDomain = "https://ai-info-radar-prod.vercel.app";
 
 function mask(value?: string | null) {
   if (!value) {
@@ -100,13 +100,15 @@ function providerItem(
 
 export function getEnvHealthCheck(): EnvHealthCheck {
   const appEnv = process.env.APP_ENV === "cloud" ? "cloud" : "local";
-  const databaseProvider = process.env.DATABASE_PROVIDER || "sqlite";
   const databaseUrl = process.env.DATABASE_URL;
+  const databaseProvider = process.env.DATABASE_PROVIDER || (databaseUrl?.startsWith("postgres") ? "postgresql" : "sqlite");
   const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
   const mobileUrl = process.env.NEXT_PUBLIC_MOBILE_BASE_URL || "";
   const capacitorUrl = process.env.CAPACITOR_SERVER_URL || mobileUrl || syncedCapacitorServerUrl() || "http://10.0.2.2:3000";
   const isCloudDomain = appBaseUrl === recommendedDomain;
   const isMobileCloudDomain = mobileUrl === recommendedDomain || capacitorUrl === recommendedDomain;
+  const usesPostgresProvider = databaseProvider === "postgres" || databaseProvider === "postgresql";
+  const usesPostgresUrl = Boolean(databaseUrl?.startsWith("postgres"));
   const githubPagesRisk = [appBaseUrl, mobileUrl, capacitorUrl].some((value) => value.includes("github.io") || value.includes("github.com/pages"));
   const usesEmulatorUrl = [appBaseUrl, mobileUrl, capacitorUrl].some((value) => value.includes("10.0.2.2"));
   const search = getSearchProviderStatus();
@@ -140,15 +142,15 @@ export function getEnvHealthCheck(): EnvHealthCheck {
       label: "DATABASE_PROVIDER",
       status:
         appEnv === "cloud"
-          ? databaseProvider === "postgres" && Boolean(databaseUrl?.startsWith("postgres"))
+          ? usesPostgresProvider && usesPostgresUrl
             ? "pass"
             : "danger"
           : (databaseProvider === "sqlite" && databaseUrl?.startsWith("file:")) ||
-              (databaseProvider === "postgres" && databaseUrl?.startsWith("postgres"))
+              (usesPostgresProvider && usesPostgresUrl)
           ? "pass"
           : "warning",
       message: `DATABASE_PROVIDER=${databaseProvider}`,
-      fix: "本地 sqlite 对应 file:；云端多人同步必须使用 postgres + postgresql:// 或 postgres://。"
+      fix: "本地 sqlite 对应 file:；云端多人同步使用 postgresql/postgres + postgresql:// 或 postgres://。"
     }),
     providerItem("search_provider", "SearchProvider", search, Boolean(process.env.TAVILY_API_KEY)),
     providerItem("summary_provider", "SummaryProvider", summary, Boolean(process.env.DEEPSEEK_API_KEY)),
@@ -157,16 +159,24 @@ export function getEnvHealthCheck(): EnvHealthCheck {
     item({
       key: "tavily_key",
       label: "Tavily Key",
-      status: process.env.TAVILY_API_KEY ? "pass" : search.requestedProvider === "tavily" || appEnv === "cloud" ? "danger" : "warning",
-      message: process.env.TAVILY_API_KEY ? "TAVILY_API_KEY 已配置。" : "TAVILY_API_KEY 未配置。",
+      status: process.env.TAVILY_API_KEY || search.requestedProvider === "mock" ? "pass" : "warning",
+      message: process.env.TAVILY_API_KEY ? "TAVILY_API_KEY 已配置。" : search.requestedProvider === "mock" ? "当前为 mock 搜索，Tavily Key 可以留空。" : "TAVILY_API_KEY 未配置。",
       fix: "真实搜索需要配置 Tavily Key；mock 模式可以留空。",
       maskedValue: mask(process.env.TAVILY_API_KEY)
     }),
     item({
       key: "deepseek_key",
       label: "DeepSeek Key",
-      status: process.env.DEEPSEEK_API_KEY ? "pass" : summary.requestedProvider === "deepseek" || factor.requestedProvider === "deepseek" || linkage.requestedProvider === "deepseek" || appEnv === "cloud" ? "danger" : "warning",
-      message: process.env.DEEPSEEK_API_KEY ? "DEEPSEEK_API_KEY 已配置。" : "DEEPSEEK_API_KEY 未配置。",
+      status:
+        process.env.DEEPSEEK_API_KEY ||
+        (summary.requestedProvider === "mock" && factor.requestedProvider === "mock" && linkage.requestedProvider === "mock")
+          ? "pass"
+          : "warning",
+      message: process.env.DEEPSEEK_API_KEY
+        ? "DEEPSEEK_API_KEY 已配置。"
+        : summary.requestedProvider === "mock" && factor.requestedProvider === "mock" && linkage.requestedProvider === "mock"
+          ? "当前为 mock 总结/评分/联动，DeepSeek Key 可以留空。"
+          : "DEEPSEEK_API_KEY 未配置。",
       fix: "真实总结、因子和联动分析需要配置 DeepSeek Key；mock 模式可以留空。",
       maskedValue: mask(process.env.DEEPSEEK_API_KEY)
     }),

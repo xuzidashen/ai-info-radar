@@ -364,7 +364,7 @@ export default function ZoneTopicDetailPage() {
         lastRunLabel={formatDate(latestReport?.createdAt ?? latestAnalysis?.createdAt)}
         actions={
           <>
-            <TopicRunButton zoneId={topic.zone.id} topicId={topic.id} label={topic.zone.type === "linkage" ? "运行联动分析" : topic.zone.type === "analysis" ? "运行分析" : "运行 Topic"} onDone={() => void loadTopic()} />
+            <TopicRunButton zoneId={topic.zone.id} topicId={topic.id} label={topic.zone.type === "linkage" ? "运行一次联动分析" : topic.zone.type === "analysis" ? "运行一次分析" : "运行一次"} onDone={() => void loadTopic()} />
             <ActionButton type="button" variant="ghost" onClick={openEditPanel}>
               <Pencil className="h-4 w-4" />
               编辑 Topic

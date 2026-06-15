@@ -48,7 +48,7 @@ export function TopicHeroCard({
             </div>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">{topic.description || topic.category}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
             {actions}
             {!actions ? (
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-500">
