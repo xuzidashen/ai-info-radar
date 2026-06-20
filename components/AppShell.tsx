@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 
 import { NotificationBell } from "@/components/NotificationBell";
 import { DesktopSidebar, ProductMark } from "@/components/product/DesktopSidebar";
@@ -6,6 +9,12 @@ import { MobileBottomNav } from "@/components/product/MobileBottomNav";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  if (pathname === "/" || pathname.startsWith("/redesign")) {
+    return children;
+  }
+
   return (
     <GradientBackground>
       <DesktopSidebar />

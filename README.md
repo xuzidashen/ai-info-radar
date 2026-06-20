@@ -2,6 +2,21 @@
 
 AI 信息雷达现在是一个本地可运行的 **Multi-Zone Intelligence Hub**：多专区信息检索与 AI 分析平台。项目基于 Next.js + TypeScript + Tailwind CSS + Prisma + SQLite，旧的 `backend/` 和 `frontend/` 目录保留为历史版本。
 
+## UI Redesign 正式入口
+
+面向普通用户的新资讯界面已提升为网页和 APK 的默认入口，旧工作台和 API 继续保留：
+
+- `/`：正式推荐首页，也是 APK 默认入口
+- `/redesign/preview`：新版总览与所有入口
+- `/redesign`：保留的新版首页预览地址
+- `/redesign/discover`：热榜与专题
+- `/redesign/saved`：收藏与稍后阅读
+- `/redesign/profile`：个人偏好
+- `/redesign/article/ai-plan-2030`：文章详情示例
+- `/legacy`：旧版管理工作台
+
+新版使用 `@phosphor-icons/react`，以移动端为主，并在桌面端延展为侧栏与内容双栏。普通用户只看到首页、发现、收藏、我的；Zone、Run、Provider 等能力从“我的 -> 管理与更多工具”进入。当前使用 mock 数据完成完整浏览流程，接入现有 InfoItem、Topic 和报告数据的步骤见 `docs/UI_REDESIGN.md`。
+
 ## 第 4 轮定位
 
 项目不再只是“单关键词信息雷达”，而是按场景拆成三个一级专区：
