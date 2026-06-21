@@ -20,7 +20,7 @@ export function SavedContent({ articles, insights }: { articles: RedesignArticle
       <section className="app-card mt-5 overflow-hidden">
         {showArticles ? articles.map((article) => (
           <Link key={article.id} href={`/articles/${article.id}`} className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-4 border-t border-[var(--app-line)] p-4 first:border-t-0 hover:bg-[var(--app-surface-muted)] sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:p-5">
-            <div className="relative aspect-[1.25/1] overflow-hidden rounded-lg"><Image src={article.image} alt="" fill className="object-cover" sizes="120px" /></div>
+            <div className="relative aspect-[1.25/1] overflow-hidden rounded-lg"><Image src={article.image} alt="" fill loading="lazy" className="object-cover" sizes="112px" /></div>
             <span className="min-w-0"><span className="text-xs font-black text-[var(--app-primary)]">内容</span><strong className="mt-1 line-clamp-2 block text-sm font-black leading-6 sm:text-base">{article.title}</strong><span className="mt-1 block text-xs font-bold text-[var(--app-text-muted)]">{article.source} · {article.time}</span></span>
             <ArrowRight size={17} className="text-[var(--app-text-muted)]" />
           </Link>

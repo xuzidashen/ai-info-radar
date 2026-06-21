@@ -36,7 +36,7 @@ export function TopicGrid({ topics }: { topics: Array<FollowTopic & { image?: st
         {topics.map((topic) => (
           <Link key={topic.id} href={`/topics/${topic.id}`} className="group overflow-hidden rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)]">
             <div className="relative aspect-[1.8/1] overflow-hidden">
-              <Image src={topic.image ?? "/redesign-assets/ai-chip.webp"} alt="" fill className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" sizes="(max-width: 640px) 100vw, 260px" />
+              <Image src={topic.image ?? "/redesign-assets/ai-chip.webp"} alt="" fill loading="lazy" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" sizes="(max-width: 640px) 240px, 260px" />
             </div>
             <div className="p-4">
               <h3 className="font-black">{topic.title}</h3>
@@ -57,7 +57,7 @@ export function GrowthList({ items }: { items: { article: RedesignArticle; growt
       {items.map(({ article, growth }) => (
         <Link key={article.id} href={`/articles/${article.id}`} className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-3 border-t border-[var(--app-line)] p-4 hover:bg-[var(--app-surface-muted)] sm:grid-cols-[7rem_minmax(0,1fr)_auto]">
           <div className="relative aspect-[1.25/1] overflow-hidden rounded-lg">
-            <Image src={article.image} alt="" fill className="object-cover" sizes="120px" />
+            <Image src={article.image} alt="" fill loading="lazy" className="object-cover" sizes="112px" />
           </div>
           <div className="min-w-0">
             <h3 className="line-clamp-2 text-sm font-black leading-6 sm:text-base">{article.title}</h3>

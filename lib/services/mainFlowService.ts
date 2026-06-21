@@ -43,6 +43,19 @@ type ReportMetadata = {
   }>;
 };
 
+const TOPIC_META_PREFIX = "[radar-meta]";
+
+type TopicLifecycle = "active" | "archived" | "deleted";
+
+type TopicMetadata = {
+  lifecycle?: TopicLifecycle;
+  keywords?: string[];
+  userDescription?: string;
+  archivedAt?: string;
+  deletedAt?: string;
+  updatedVia?: string;
+};
+
 function parseMetadata(value: string | null): ReportMetadata {
   if (!value) {
     return {};
@@ -56,9 +69,77 @@ function parseMetadata(value: string | null): ReportMetadata {
   }
 }
 
-function canUseDatabase() {
+function parseTopicDescription(value: string | null): { metadata: TopicMetadata; description: string | null } {
+  if (!value?.startsWith(TOPIC_META_PREFIX)) {
+    return { metadata: {}, description: value };
+  }
+
+  const lineBreak = value.indexOf("\n");
+  const rawMeta = lineBreak >= 0 ? value.slice(TOPIC_META_PREFIX.length, lineBreak).trim() : value.slice(TOPIC_META_PREFIX.length).trim();
+  const description = lineBreak >= 0 ? value.slice(lineBreak + 1).trim() || null : null;
+
+  try {
+    const parsed = JSON.parse(rawMeta) as TopicMetadata;
+    return { metadata: parsed && typeof parsed === "object" ? parsed : {}, description };
+  } catch {
+    return { metadata: {}, description: value };
+  }
+}
+
+function buildTopicDescription(description: string | null | undefined, metadata: TopicMetadata) {
+  const cleanDescription = description?.trim() || null;
+  const meaningfulMetadata = Object.fromEntries(
+    Object.entries(metadata).filter(([, value]) => {
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== undefined && value !== null && value !== "";
+    })
+  );
+
+  if (!Object.keys(meaningfulMetadata).length) {
+    return cleanDescription;
+  }
+
+  return `${TOPIC_META_PREFIX}${JSON.stringify(meaningfulMetadata)}${cleanDescription ? `\n${cleanDescription}` : ""}`;
+}
+
+function activeTopicWhere() {
+  return {
+    NOT: [
+      { description: { startsWith: `${TOPIC_META_PREFIX}{"lifecycle":"archived"` } },
+      { description: { startsWith: `${TOPIC_META_PREFIX}{"lifecycle":"deleted"` } }
+    ]
+  };
+}
+
+function topicLifecycle(description: string | null): TopicLifecycle {
+  return parseTopicDescription(description).metadata.lifecycle ?? "active";
+}
+
+export function canUseDatabase() {
   const databaseUrl = process.env.DATABASE_URL;
   return Boolean(databaseUrl?.startsWith("postgresql://") || databaseUrl?.startsWith("postgres://"));
+}
+
+async function withFallback<T>(promise: Promise<T>, fallback: T, label: string, timeoutMs = 1800): Promise<T> {
+  if (!canUseDatabase()) {
+    return fallback;
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeout = setTimeout(() => resolve(fallback), timeoutMs);
+      })
+    ]);
+  } catch (error) {
+    console.warn(`Main flow ${label} fallback`, error);
+    return fallback;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function formatRelativeTime(date: Date) {
@@ -139,20 +220,25 @@ function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle {
 }
 
 function mapTopic(topic: TopicWithKeyword, latestReportId?: string): FollowTopic {
+  const { metadata, description } = parseTopicDescription(topic.description);
   const keyword = topic.keyword?.name ?? topic.name;
   const resultCount = (topic.keyword?._count.infoItems ?? 0) + (topic.keyword?._count.summaries ?? 0);
+  const keywords = metadata.keywords?.length
+    ? metadata.keywords
+    : Array.from(new Set([keyword, topic.category, topic.searchMode].filter(Boolean))).slice(0, 4);
 
   return {
     id: topic.id,
     title: topic.name,
-    description: topic.description || `持续整理与“${topic.name}”有关的重要变化。`,
-    keywords: Array.from(new Set([keyword, topic.category, topic.searchMode].filter(Boolean))).slice(0, 4),
+    description: description || `持续整理与“${topic.name}”有关的重要变化。`,
+    keywords,
     category: topic.category || categoryLabel(topic.keyword?.category),
     updatedAt: formatRelativeTime(topic.updatedAt),
     resultCount,
     articleIds: [],
     insightId: latestReportId ?? "generated",
-    status: resultCount > 0 ? "fresh" : "scheduled"
+    status: resultCount > 0 ? "fresh" : "scheduled",
+    lifecycle: metadata.lifecycle ?? "active"
   };
 }
 
@@ -226,6 +312,7 @@ async function recentReports(limit: number) {
 async function topicsWithReports(limit = 20) {
   const [topics, reports] = await Promise.all([
     prisma.zoneTopic.findMany({
+      where: activeTopicWhere(),
       orderBy: { updatedAt: "desc" },
       take: limit,
       include: {
@@ -239,7 +326,7 @@ async function topicsWithReports(limit = 20) {
         }
       }
     }),
-    recentReports(80)
+    recentReports(24)
   ]);
   const latestReportByTopic = new Map<string, string>();
 
@@ -254,30 +341,27 @@ async function topicsWithReports(limit = 20) {
 }
 
 export async function getMainFlowHomeView() {
+  const fallback = {
+    featuredArticle,
+    homeFeed,
+    rankingItems: mockRankingItems,
+    stats: { articleCount: 12, hotCount: 8, topicCount: followTopics.length }
+  };
+
   if (!canUseDatabase()) {
-    return {
-      featuredArticle,
-      homeFeed,
-      rankingItems: mockRankingItems,
-      stats: { articleCount: 12, hotCount: 8, topicCount: followTopics.length }
-    };
+    return fallback;
   }
 
-  try {
+  return withFallback((async () => {
     const [items, reports, topicCount] = await Promise.all([
-      recentInfoItems(8),
-      recentReports(6),
-      prisma.zoneTopic.count()
+      recentInfoItems(5),
+      recentReports(2),
+      prisma.zoneTopic.count({ where: activeTopicWhere() })
     ]);
     const articles = items.map(mapInfoItemToArticle);
 
     if (!articles.length && !reports.length) {
-      return {
-        featuredArticle,
-        homeFeed,
-        rankingItems: mockRankingItems,
-        stats: { articleCount: 12, hotCount: 8, topicCount: followTopics.length }
-      };
+      return fallback;
     }
 
     const rankingItems = articles.slice(0, 5).map((article, index) => ({
@@ -297,15 +381,7 @@ export async function getMainFlowHomeView() {
         topicCount: topicCount || followTopics.length
       }
     };
-  } catch (error) {
-    console.warn("Main flow home fallback", error);
-    return {
-      featuredArticle,
-      homeFeed,
-      rankingItems: mockRankingItems,
-      stats: { articleCount: 12, hotCount: 8, topicCount: followTopics.length }
-    };
-  }
+  })(), fallback, "home", 1500);
 }
 
 export async function getMainFlowDiscoverView(query?: string) {
@@ -321,8 +397,16 @@ export async function getMainFlowDiscoverView(query?: string) {
     };
   }
 
-  try {
-    const [items, topics] = await Promise.all([recentInfoItems(16, normalized), topicsWithReports(6)]);
+  const fallback = {
+    articles: normalized
+      ? redesignArticles.filter((article) => `${article.title}${article.excerpt}${article.source}${article.tags.join("")}`.toLowerCase().includes(normalized.toLowerCase()))
+      : redesignArticles.slice(0, 4),
+    topics: followTopics,
+    rankingItems: mockRankingItems
+  };
+
+  return withFallback((async () => {
+    const [items, topics] = await Promise.all([recentInfoItems(8, normalized), topicsWithReports(3)]);
     const articles = items.map(mapInfoItemToArticle);
     const filteredMocks = normalized
       ? redesignArticles.filter((article) => `${article.title}${article.excerpt}${article.source}${article.tags.join("")}`.toLowerCase().includes(normalized.toLowerCase()))
@@ -335,16 +419,7 @@ export async function getMainFlowDiscoverView(query?: string) {
         ? articles.slice(0, 5).map((article, index) => ({ rank: index + 1, title: article.title, heat: `${Math.round(article.score * 8)}.4 万`, articleId: article.id }))
         : mockRankingItems
     };
-  } catch (error) {
-    console.warn("Main flow discover fallback", error);
-    return {
-      articles: normalized
-        ? redesignArticles.filter((article) => `${article.title}${article.excerpt}${article.source}${article.tags.join("")}`.toLowerCase().includes(normalized.toLowerCase()))
-        : redesignArticles.slice(0, 4),
-      topics: followTopics,
-      rankingItems: mockRankingItems
-    };
-  }
+  })(), fallback, "discover", 1800);
 }
 
 export async function getMainFlowTopics() {
@@ -352,13 +427,10 @@ export async function getMainFlowTopics() {
     return followTopics;
   }
 
-  try {
-    const topics = await topicsWithReports();
+  return withFallback((async () => {
+    const topics = await topicsWithReports(12);
     return topics.length ? topics : followTopics;
-  } catch (error) {
-    console.warn("Main flow topics fallback", error);
-    return followTopics;
-  }
+  })(), followTopics, "topics", 1800);
 }
 
 export async function getMainFlowTopicDetail(id: string) {
@@ -380,7 +452,7 @@ export async function getMainFlowTopicDetail(id: string) {
           include: {
             infoItems: {
               orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-              take: 12
+              take: 6
             },
             summaries: {
               orderBy: { createdAt: "desc" },
@@ -395,6 +467,13 @@ export async function getMainFlowTopicDetail(id: string) {
     });
 
     if (topic) {
+      if (topicLifecycle(topic.description) !== "active") {
+        return {
+          topic: null,
+          articles: []
+        };
+      }
+
       const report = await prisma.zoneReport.findFirst({
         where: { metadata: { contains: `"topicId":"${topic.id}"` } },
         orderBy: { createdAt: "desc" },
@@ -424,14 +503,11 @@ export async function getMainFlowInsights() {
     return mockInsights;
   }
 
-  try {
-    const reports = await recentReports(20);
+  return withFallback((async () => {
+    const reports = await recentReports(8);
     const mapped = reports.map((report) => mapReportToInsight(report));
     return mapped.length ? mapped : mockInsights;
-  } catch (error) {
-    console.warn("Main flow insights fallback", error);
-    return mockInsights;
-  }
+  })(), mockInsights, "insights", 1800);
 }
 
 export function buildGeneratedInsight(query: { topic?: string; category?: string; topicId?: string }): Insight {
@@ -549,14 +625,16 @@ export async function getMainFlowArticleDetail(id: string) {
 }
 
 export async function getMainFlowSavedView() {
+  const fallback = {
+    articles: savedArticles,
+    insights: mockInsights.slice(0, 2)
+  };
+
   if (!canUseDatabase()) {
-    return {
-      articles: savedArticles,
-      insights: mockInsights.slice(0, 2)
-    };
+    return fallback;
   }
 
-  try {
+  return withFallback((async () => {
     const [items, reports] = await Promise.all([
       prisma.infoItem.findMany({
         orderBy: [{ createdAt: "desc" }],
@@ -577,11 +655,134 @@ export async function getMainFlowSavedView() {
       articles: articles.length ? articles : savedArticles,
       insights: mappedInsights.length ? mappedInsights : mockInsights.slice(0, 2)
     };
-  } catch (error) {
-    console.warn("Main flow saved fallback", error);
+  })(), fallback, "saved", 1800);
+}
+
+export type TopicEditInput = {
+  title: string;
+  description?: string;
+  category: string;
+  keywords: string[];
+};
+
+export async function updateMainFlowTopic(id: string, input: TopicEditInput) {
+  if (!canUseDatabase()) {
+    return null;
+  }
+
+  const existing = await prisma.zoneTopic.findUnique({ where: { id } });
+  if (!existing) {
+    return null;
+  }
+
+  const parsed = parseTopicDescription(existing.description);
+  const topic = await prisma.zoneTopic.update({
+    where: { id },
+    data: {
+      name: input.title,
+      category: input.category,
+      description: buildTopicDescription(input.description || `持续整理与“${input.title}”有关的重要变化。`, {
+        ...parsed.metadata,
+        lifecycle: parsed.metadata.lifecycle ?? "active",
+        keywords: input.keywords,
+        updatedVia: "main-flow"
+      })
+    },
+    include: {
+      zone: true,
+      keyword: {
+        include: {
+          _count: {
+            select: { infoItems: true, summaries: true }
+          }
+        }
+      }
+    }
+  });
+
+  return mapTopic(topic);
+}
+
+export async function markMainFlowTopicLifecycle(id: string, lifecycle: Exclude<TopicLifecycle, "active">) {
+  if (!canUseDatabase()) {
+    return null;
+  }
+
+  const existing = await prisma.zoneTopic.findUnique({ where: { id } });
+  if (!existing) {
+    return null;
+  }
+
+  const parsed = parseTopicDescription(existing.description);
+  const now = new Date().toISOString();
+  const topic = await prisma.zoneTopic.update({
+    where: { id },
+    data: {
+      description: buildTopicDescription(parsed.description, {
+        ...parsed.metadata,
+        lifecycle,
+        archivedAt: lifecycle === "archived" ? now : parsed.metadata.archivedAt,
+        deletedAt: lifecycle === "deleted" ? now : parsed.metadata.deletedAt,
+        updatedVia: "main-flow"
+      })
+    },
+    include: {
+      zone: true,
+      keyword: {
+        include: {
+          _count: {
+            select: { infoItems: true, summaries: true }
+          }
+        }
+      }
+    }
+  });
+
+  return mapTopic(topic);
+}
+
+export async function bulkMarkMainFlowTopics(ids: string[], lifecycle: Exclude<TopicLifecycle, "active">) {
+  if (!canUseDatabase()) {
     return {
-      articles: savedArticles,
-      insights: mockInsights.slice(0, 2)
+      updated: ids.length,
+      failed: 0,
+      localFallback: true
     };
   }
+
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  const results = await Promise.allSettled(uniqueIds.map((id) => markMainFlowTopicLifecycle(id, lifecycle)));
+  const updated = results.filter((result) => result.status === "fulfilled" && result.value).length;
+
+  return {
+    updated,
+    failed: uniqueIds.length - updated,
+    localFallback: false
+  };
+}
+
+export async function getEditableMainFlowTopic(id: string) {
+  if (!canUseDatabase()) {
+    return getFollowTopic(id);
+  }
+
+  const topic = await prisma.zoneTopic.findUnique({
+    where: { id },
+    include: {
+      zone: true,
+      keyword: {
+        include: {
+          _count: {
+            select: { infoItems: true, summaries: true }
+          }
+        }
+      }
+    }
+  });
+
+  if (!topic || topicLifecycle(topic.description) !== "active") {
+    return null;
+  }
+
+  return mapTopic(topic);
 }

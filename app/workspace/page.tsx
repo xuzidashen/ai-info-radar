@@ -15,7 +15,7 @@ export default function WorkspacePage() {
   return (
     <RedesignShell showBottomNav={false}>
       <Link href="/profile" className="inline-flex items-center gap-2 text-sm font-black text-[var(--app-text-muted)] hover:text-[var(--app-primary)]"><ArrowLeft size={17} />返回我的</Link>
-      <header className="mt-6 border-b border-[var(--app-line)] pb-6"><span className="app-chip">高级页面</span><h1 className="mt-3 text-3xl font-black">高级工具</h1><p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[var(--app-text-muted)]">这里保留旧版内部能力，仅用于配置、排查和历史数据兼容。普通阅读与主题更新请使用新的主流程。</p></header>
+      <header className="mt-6 border-b border-[var(--app-line)] pb-6"><span className="app-chip">高级工具，仅用于管理和调试。</span><h1 className="mt-3 text-3xl font-black">高级工具</h1><p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[var(--app-text-muted)]">这里保留旧版内部能力，仅用于配置、排查和历史数据兼容。普通阅读与主题更新请使用新的主流程。</p></header>
       <section className="mt-6 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">{tools.map((tool) => { const Icon = tool.icon; return <Link key={tool.href} href={tool.href} className="flex min-h-20 items-center gap-4 py-4 hover:text-[var(--app-primary)]"><Icon size={21} className="shrink-0" /><span className="min-w-0 flex-1"><strong className="block font-black">{tool.title}</strong><span className="mt-1 block text-xs font-semibold text-[var(--app-text-muted)]">{tool.description}</span></span><ArrowRight size={17} /></Link>; })}</section>
     </RedesignShell>
   );

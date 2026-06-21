@@ -124,7 +124,7 @@ export function NewsListCard({ articles, title = "为你推荐" }: { articles: R
           <article key={article.id} className="relative grid grid-cols-[6.5rem_minmax(0,1fr)] gap-4 border-t border-[var(--app-line)] p-4 transition-colors hover:bg-[var(--app-surface-muted)] sm:grid-cols-[9rem_minmax(0,1fr)] sm:p-5">
             <Link href={`/articles/${article.id}`} className="group contents">
               <div className="relative aspect-[1.25/1] overflow-hidden rounded-lg bg-[var(--app-surface-muted)]">
-                <Image src={article.image} alt="" fill className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" sizes="160px" />
+                <Image src={article.image} alt="" fill loading="lazy" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" sizes="128px" />
               </div>
               <div className="min-w-0 pr-7">
                 <h3 className="line-clamp-2 text-[0.95rem] font-black leading-6 sm:text-lg">{article.title}</h3>

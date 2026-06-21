@@ -23,6 +23,7 @@ export type FollowTopic = {
   articleIds: string[];
   insightId: string;
   status: "fresh" | "scheduled";
+  lifecycle?: "active" | "archived" | "deleted";
 };
 
 export type Insight = {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { updateMainFlowTopic } from "@/lib/services/mainFlowService";
 import { ensureDefaultZones } from "@/lib/services/zoneService";
 import type { SearchMode } from "@/lib/types";
 
@@ -69,6 +70,13 @@ export async function POST(request: Request) {
         factorEnabled: zone.type === "analysis",
         linkageEnabled: false
       }
+    });
+
+    await updateMainFlowTopic(topic.id, {
+      title,
+      description: body.description?.trim() || `持续整理与“${title}”有关的重要变化。`,
+      category: direction,
+      keywords: keywords.length ? keywords : [title]
     });
 
     return NextResponse.json({ topic: { id: topic.id, title: topic.name } });
