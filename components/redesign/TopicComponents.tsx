@@ -35,17 +35,32 @@ function saveStoredTopic(topic: StoredTopic) {
 }
 
 function TopicRow({ topic }: { topic: FollowTopic }) {
-  const [status, setStatus] = useState<"idle" | "updating" | "done">("idle");
-
-  function updateNow() {
-    if (status === "updating") return;
-    setStatus("updating");
-    window.setTimeout(() => setStatus("done"), 1200);
-  }
-
-  const insightHref = topic.id.startsWith("custom-")
+  const initialInsightHref = topic.id.startsWith("custom-")
     ? `/insights/generated?topic=${encodeURIComponent(topic.title)}&category=${encodeURIComponent(topic.category)}&topicId=${encodeURIComponent(topic.id)}`
     : `/insights/${topic.insightId}`;
+  const [status, setStatus] = useState<"idle" | "updating" | "done">("idle");
+  const [resultHref, setResultHref] = useState(initialInsightHref);
+
+  async function updateNow() {
+    if (status === "updating") return;
+    setStatus("updating");
+
+    try {
+      const response = await fetch(`/api/main-flow/topics/${topic.id}/run`, {
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error("更新失败");
+      }
+
+      const data = await response.json() as { insightHref?: string; localFallback?: boolean };
+      setResultHref(data.localFallback ? initialInsightHref : data.insightHref ?? resultHref);
+      setStatus("done");
+    } catch {
+      window.setTimeout(() => setStatus("done"), 700);
+    }
+  }
 
   return (
     <article className="border-t border-[var(--app-line)] px-5 py-5 first:border-t-0 sm:px-6">
@@ -58,14 +73,14 @@ function TopicRow({ topic }: { topic: FollowTopic }) {
           <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{topic.description}</p>
           <div className="mt-3 flex flex-wrap gap-2">{topic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}</div>
           <p className="mt-3 text-xs font-bold text-[var(--app-text-muted)]">
-            {status === "updating" ? "正在整理最新内容…" : status === "done" ? "已完成本次更新，发现 3 条新内容" : `最近更新 ${topic.updatedAt} · ${topic.resultCount} 条结果`}
+            {status === "updating" ? "正在整理最新内容…" : status === "done" ? "已完成本次更新，已生成分析结果" : `最近更新 ${topic.updatedAt} · ${topic.resultCount} 条结果`}
           </p>
         </div>
         <Link href={`/topics/${topic.id}`} className="app-button shrink-0">查看内容 <ArrowRight size={16} /></Link>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={updateNow} disabled={status === "updating"} className="app-button-secondary min-h-10 px-3 py-2 text-xs disabled:cursor-wait disabled:opacity-70"><Lightning size={16} weight="fill" />{status === "updating" ? "正在更新" : "立即更新"}</button>
-        <Link href={insightHref} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><Sparkle size={16} />查看分析</Link>
+        <Link href={resultHref} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><Sparkle size={16} />查看分析</Link>
       </div>
     </article>
   );
@@ -101,10 +116,11 @@ export function TopicCreateWizard() {
   const [direction, setDirection] = useState(directions[0]);
   const [keywords, setKeywords] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   const keywordList = useMemo(() => keywords.split(/[，,\s]+/).map((item) => item.trim()).filter(Boolean).slice(0, 5), [keywords]);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step < 3) {
       setStep((current) => current + 1);
@@ -112,21 +128,65 @@ export function TopicCreateWizard() {
     }
     if (!title.trim()) return;
     setSubmitting(true);
-    const id = `custom-${Date.now()}`;
-    saveStoredTopic({
-      id,
-      title: title.trim(),
-      description: description.trim() || `持续整理与“${title.trim()}”有关的重要变化。`,
-      keywords: keywordList.length ? keywordList : [title.trim()],
-      category: direction,
-      updatedAt: "刚刚创建",
-      resultCount: 0,
-      articleIds: ["ai-plan-2030", "domestic-ai-chip"],
-      insightId: "generated",
-      status: "scheduled",
-      createdAt: new Date().toISOString()
-    });
-    router.push(`/topics/${id}`);
+    setError("");
+
+    try {
+      const response = await fetch("/api/main-flow/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          direction,
+          keywords: keywordList.length ? keywordList : [title.trim()]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("创建失败");
+      }
+
+      const data = await response.json() as { topic?: { id: string }; localFallback?: boolean };
+
+      if (!data.topic?.id) {
+        throw new Error("创建失败");
+      }
+
+      if (data.localFallback || data.topic.id.startsWith("custom-")) {
+        saveStoredTopic({
+          id: data.topic.id,
+          title: title.trim(),
+          description: description.trim() || `持续整理与“${title.trim()}”有关的重要变化。`,
+          keywords: keywordList.length ? keywordList : [title.trim()],
+          category: direction,
+          updatedAt: "刚刚创建",
+          resultCount: 0,
+          articleIds: ["ai-plan-2030", "domestic-ai-chip"],
+          insightId: "generated",
+          status: "scheduled",
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      router.push(`/topics/${data.topic.id}`);
+    } catch {
+      const id = `custom-${Date.now()}`;
+      saveStoredTopic({
+        id,
+        title: title.trim(),
+        description: description.trim() || `持续整理与“${title.trim()}”有关的重要变化。`,
+        keywords: keywordList.length ? keywordList : [title.trim()],
+        category: direction,
+        updatedAt: "刚刚创建",
+        resultCount: 0,
+        articleIds: ["ai-plan-2030", "domestic-ai-chip"],
+        insightId: "generated",
+        status: "scheduled",
+        createdAt: new Date().toISOString()
+      });
+      setError("已使用本地兜底保存，联网后可再次同步。");
+      router.push(`/topics/${id}`);
+    }
   }
 
   return (
@@ -169,6 +229,7 @@ export function TopicCreateWizard() {
           {step > 1 ? <button type="button" onClick={() => setStep((current) => current - 1)} className="app-button-secondary">上一步</button> : <span />}
           <button type="submit" disabled={submitting || (step === 1 && !title.trim())} className="app-button disabled:cursor-not-allowed disabled:opacity-50">{step === 3 ? (submitting ? "正在创建" : "创建主题") : "下一步"}<ArrowRight size={17} /></button>
         </div>
+        {error ? <p className="mt-4 text-sm font-bold text-[var(--app-text-muted)]">{error}</p> : null}
       </form>
     </div>
   );
@@ -176,7 +237,9 @@ export function TopicCreateWizard() {
 
 export function TopicDetailClient({ id, topic, articles }: { id: string; topic: FollowTopic | null; articles: RedesignArticle[] }) {
   const [resolvedTopic, setResolvedTopic] = useState<FollowTopic | null>(topic);
-  const [status, setStatus] = useState<"idle" | "updating" | "done">("idle");
+  const [status, setStatus] = useState<"idle" | "collecting" | "summarizing" | "done" | "error">("idle");
+  const [resultHref, setResultHref] = useState<string | null>(null);
+  const [contentHref, setContentHref] = useState<string | null>(null);
 
   useEffect(() => {
     if (!topic) setResolvedTopic(readStoredTopics().find((item) => item.id === id) ?? null);
@@ -190,10 +253,37 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
     ? `/insights/generated?topic=${encodeURIComponent(resolvedTopic.title)}&category=${encodeURIComponent(resolvedTopic.category)}&topicId=${encodeURIComponent(resolvedTopic.id)}`
     : `/insights/${resolvedTopic.insightId}`;
 
-  function updateNow() {
-    if (status === "updating") return;
-    setStatus("updating");
-    window.setTimeout(() => setStatus("done"), 1400);
+  async function updateNow() {
+    if (status === "collecting" || status === "summarizing") return;
+    const currentTopic = resolvedTopic;
+
+    if (!currentTopic) return;
+
+    setStatus("collecting");
+    window.setTimeout(() => setStatus((current) => (current === "collecting" ? "summarizing" : current)), 600);
+
+    try {
+      const response = await fetch(`/api/main-flow/topics/${currentTopic.id}/run`, {
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error("更新失败");
+      }
+
+      const data = await response.json() as { insightHref?: string; contentHref?: string; localFallback?: boolean };
+      setResultHref(data.localFallback ? insightHref : data.insightHref ?? insightHref);
+      setContentHref(data.contentHref ?? `/topics/${currentTopic.id}`);
+      setStatus("done");
+    } catch {
+      if (resolvedTopic.id.startsWith("custom-")) {
+        setResultHref(insightHref);
+        setContentHref(`/topics/${currentTopic.id}`);
+        setStatus("done");
+      } else {
+        setStatus("error");
+      }
+    }
   }
 
   return (
@@ -202,9 +292,25 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
       <header className="mt-6 border-b border-[var(--app-line)] pb-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0"><span className="app-chip text-[var(--app-primary)]">{resolvedTopic.category}</span><h1 className="mt-3 text-3xl font-black leading-tight">{resolvedTopic.title}</h1><p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-[var(--app-text-muted)]">{resolvedTopic.description}</p><div className="mt-4 flex flex-wrap gap-2">{resolvedTopic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}</div></div>
-          <button type="button" onClick={updateNow} disabled={status === "updating"} className="app-button shrink-0 disabled:cursor-wait disabled:opacity-70"><Lightning size={18} weight="fill" />{status === "updating" ? "正在更新" : "立即更新"}</button>
+          <button type="button" onClick={updateNow} disabled={status === "collecting" || status === "summarizing"} className="app-button shrink-0 disabled:cursor-wait disabled:opacity-70"><Lightning size={18} weight="fill" />{status === "collecting" || status === "summarizing" ? "正在更新" : "立即更新"}</button>
         </div>
-        <p className={`mt-5 text-sm font-bold ${status === "done" ? "text-[var(--app-positive)]" : "text-[var(--app-text-muted)]"}`}>{status === "updating" ? "正在整理最新内容，请稍候…" : status === "done" ? "已完成本次更新：发现 3 条新内容，生成 1 条分析结果。" : `最近更新 ${resolvedTopic.updatedAt}`}</p>
+        <p className={`mt-5 text-sm font-bold ${status === "done" ? "text-[var(--app-positive)]" : status === "error" ? "text-[#e9543f]" : "text-[var(--app-text-muted)]"}`}>
+          {status === "collecting"
+            ? "正在整理最新内容…"
+            : status === "summarizing"
+              ? "正在生成分析结果…"
+              : status === "done"
+                ? "已完成本次更新：发现 3 条新内容，生成 1 条分析结果。"
+                : status === "error"
+                  ? "更新失败，请稍后再试。"
+                  : `最近更新 ${resolvedTopic.updatedAt}`}
+        </p>
+        {status === "done" ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href={resultHref ?? insightHref} className="app-button"><Sparkle size={17} />查看分析结果</Link>
+            <Link href={contentHref ?? `/topics/${resolvedTopic.id}`} className="app-button-secondary"><FileText size={17} />查看相关内容</Link>
+          </div>
+        ) : null}
       </header>
 
       <section className="py-7">

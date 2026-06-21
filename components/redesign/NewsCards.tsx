@@ -54,18 +54,22 @@ export function HeroNewsCard({ article }: { article: RedesignArticle }) {
   );
 }
 
-export function BriefStats() {
-  const stats = [
-    { label: "条资讯", value: 12, icon: Newspaper, color: "text-[#2563eb] bg-[#e9f0ff]" },
-    { label: "个热点", value: 8, icon: Fire, color: "text-[#e9543f] bg-[#fff0ed]" },
-    { label: "个主题", value: 3, icon: FolderSimple, color: "text-[#0f9f6e] bg-[#e7f7f1]" }
+export function BriefStats({
+  stats = { articleCount: 12, hotCount: 8, topicCount: 3 }
+}: {
+  stats?: { articleCount: number; hotCount: number; topicCount: number };
+}) {
+  const statItems = [
+    { label: "条资讯", value: stats.articleCount, icon: Newspaper, color: "text-[#2563eb] bg-[#e9f0ff]" },
+    { label: "个热点", value: stats.hotCount, icon: Fire, color: "text-[#e9543f] bg-[#fff0ed]" },
+    { label: "个主题", value: stats.topicCount, icon: FolderSimple, color: "text-[#0f9f6e] bg-[#e7f7f1]" }
   ];
 
   return (
     <section className="app-card p-5">
       <SectionHeader title="今日简报" href="/discover" />
       <div className="mt-5 grid grid-cols-3 divide-x divide-[var(--app-line)]">
-        {stats.map((stat) => {
+        {statItems.map((stat) => {
           const Icon = stat.icon;
           return (
             <div key={stat.label} className="flex min-w-0 flex-col items-center px-2 text-center sm:flex-row sm:justify-center sm:gap-3 sm:text-left">

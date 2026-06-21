@@ -5,9 +5,13 @@ import { RankingCard } from "@/components/redesign/DiscoverCards";
 import { CategoryTabs, TopNav } from "@/components/redesign/Navigation";
 import { BriefStats, HeroNewsCard, HomeActions, NewsListCard } from "@/components/redesign/NewsCards";
 import { RedesignShell } from "@/components/redesign/RedesignShell";
-import { featuredArticle, homeFeed, rankingItems } from "@/lib/mock/redesignData";
+import { getMainFlowHomeView } from "@/lib/services/mainFlowService";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const { featuredArticle, homeFeed, rankingItems, stats } = await getMainFlowHomeView();
+
   return (
     <RedesignShell
       aside={
@@ -26,7 +30,7 @@ export default function HomePage() {
         <TopNav />
         <CategoryTabs items={["推荐", "科技", "商业", "AI", "世界", "视频"]} />
         <HeroNewsCard article={featuredArticle} />
-        <BriefStats />
+        <BriefStats stats={stats} />
         <HomeActions />
         <div className="xl:hidden"><RankingCard items={rankingItems} /></div>
         <NewsListCard articles={homeFeed} />

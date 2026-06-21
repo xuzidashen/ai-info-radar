@@ -28,7 +28,7 @@ export function RankingCard({ items }: { items: { rank: number; title: string; h
   );
 }
 
-export function TopicGrid({ topics }: { topics: Array<FollowTopic & { image: string }> }) {
+export function TopicGrid({ topics }: { topics: Array<FollowTopic & { image?: string }> }) {
   return (
     <section>
       <SectionHeader title="精选专题" href="/topics" actionLabel="我的关注" />
@@ -36,7 +36,7 @@ export function TopicGrid({ topics }: { topics: Array<FollowTopic & { image: str
         {topics.map((topic) => (
           <Link key={topic.id} href={`/topics/${topic.id}`} className="group overflow-hidden rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)]">
             <div className="relative aspect-[1.8/1] overflow-hidden">
-              <Image src={topic.image} alt="" fill className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" sizes="(max-width: 640px) 100vw, 260px" />
+              <Image src={topic.image ?? "/redesign-assets/ai-chip.webp"} alt="" fill className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" sizes="(max-width: 640px) 100vw, 260px" />
             </div>
             <div className="p-4">
               <h3 className="font-black">{topic.title}</h3>

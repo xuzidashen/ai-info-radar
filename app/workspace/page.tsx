@@ -6,6 +6,7 @@ import { RedesignShell } from "@/components/redesign/RedesignShell";
 const tools = [
   { title: "旧版专区与主题", description: "查看原有 Zone、Topic 数据结构", href: "/zones", icon: Database },
   { title: "旧版报告与运行记录", description: "面向排查和历史兼容的内部页面", href: "/reports", icon: Wrench },
+  { title: "运行日志", description: "查看旧版 Run 记录和重试链路", href: "/runs", icon: Wrench },
   { title: "Provider 测试", description: "检查搜索与总结服务配置", href: "/settings/provider-test", icon: Flask },
   { title: "系统健康状态", description: "查看服务连接与运行环境", href: "/system/health", icon: Heartbeat }
 ];

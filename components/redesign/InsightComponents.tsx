@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CheckCircle, LinkSimple, Sparkle } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeft, ArrowRight, BookmarkSimple, CheckCircle, LinkSimple, Sparkle } from "@phosphor-icons/react/dist/ssr";
 
 import type { Insight, RedesignArticle } from "@/lib/mock/redesignData";
 
@@ -20,7 +20,10 @@ export function InsightList({ insights }: { insights: Insight[] }) {
 export function InsightArticle({ insight, related }: { insight: Insight; related: RedesignArticle[] }) {
   return (
     <article>
-      <Link href={`/topics/${insight.topicId}`} className="inline-flex items-center gap-2 text-sm font-black text-[var(--app-text-muted)] hover:text-[var(--app-primary)]"><ArrowLeft size={17} />返回关注主题</Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link href={`/topics/${insight.topicId}`} className="inline-flex items-center gap-2 text-sm font-black text-[var(--app-text-muted)] hover:text-[var(--app-primary)]"><ArrowLeft size={17} />返回关注主题</Link>
+        <button type="button" className="app-button-secondary min-h-10 px-3 py-2 text-xs"><BookmarkSimple size={16} />收藏</button>
+      </div>
       <header className="mt-6 border-b border-[var(--app-line)] pb-7">
         <div className="flex items-center gap-2 text-sm font-black text-[var(--app-primary)]"><Sparkle size={18} weight="fill" />分析结果</div>
         <h1 className="mt-3 max-w-3xl text-3xl font-black leading-[1.3] sm:text-4xl">{insight.title}</h1>
@@ -39,7 +42,7 @@ export function InsightArticle({ insight, related }: { insight: Insight; related
       </section>
 
       <section className="border-t border-[var(--app-line)] py-7">
-        <h2 className="text-xl font-black">参考链接</h2>
+        <h2 className="text-xl font-black">来源列表</h2>
         <div className="mt-4 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">{insight.references.map((reference) => <Link key={reference.url} href={reference.url} className="flex min-h-16 items-center gap-3 py-3 hover:text-[var(--app-primary)]"><LinkSimple size={18} className="shrink-0" /><span className="min-w-0 flex-1"><strong className="block text-sm font-black">{reference.title}</strong><span className="mt-1 block text-xs font-bold text-[var(--app-text-muted)]">{reference.source}</span></span><ArrowRight size={16} /></Link>)}</div>
       </section>
 

@@ -78,7 +78,7 @@ export function ManagementEntry() {
 export function PreferencePanel() {
   return (
     <section className="app-card p-5">
-      <div className="flex items-center gap-2"><SlidersHorizontal size={21} className="text-[var(--app-primary)]" /><h2 className="text-lg font-black">资讯偏好</h2></div>
+      <div className="flex items-center gap-2"><SlidersHorizontal size={21} className="text-[var(--app-primary)]" /><h2 className="text-lg font-black">偏好设置</h2></div>
       <div className="mt-5 space-y-5">
         <div><p className="text-sm font-black">关键词</p><div className="mt-2 flex flex-wrap gap-2"><span className="app-chip">AI Agent</span><span className="app-chip">半导体</span><span className="app-chip">政策</span><button type="button" className="app-chip text-[var(--app-primary)]">+ 添加</button></div></div>
         <div><p className="text-sm font-black">内容方向</p><div className="mt-2 flex flex-wrap gap-2"><span className="app-chip text-[var(--app-primary)]">科技</span><span className="app-chip text-[var(--app-primary)]">商业</span><span className="app-chip">世界</span><span className="app-chip">深度</span></div></div>

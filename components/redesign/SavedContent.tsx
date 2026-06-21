@@ -31,7 +31,17 @@ export function SavedContent({ articles, insights }: { articles: RedesignArticle
             <span className="min-w-0 flex-1"><span className="text-xs font-black text-[#0f8b62]">分析</span><strong className="mt-1 line-clamp-2 block text-base font-black">{insight.title}</strong><span className="mt-1 block text-xs font-bold text-[var(--app-text-muted)]">{insight.topicTitle}</span></span><ArrowRight size={17} className="text-[var(--app-text-muted)]" />
           </Link>
         )) : null}
-        {!showArticles && !showInsights ? <div className="p-10 text-center"><BookmarkSimple size={30} className="mx-auto text-[var(--app-text-muted)]" /><p className="mt-3 font-black">这里还没有收藏</p></div> : null}
+        {showArticles && !articles.length && showInsights && !insights.length ? (
+          <div className="p-10 text-center">
+            <BookmarkSimple size={30} className="mx-auto text-[var(--app-text-muted)]" />
+            <p className="mt-3 font-black">这里还没有收藏</p>
+            <p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">先去发现页保存一条内容，或者运行一次主题更新。</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <Link href="/discover" className="app-button">去发现</Link>
+              <Link href="/" className="app-button-secondary">回首页</Link>
+            </div>
+          </div>
+        ) : null}
       </section>
     </>
   );
