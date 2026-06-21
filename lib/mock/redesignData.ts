@@ -12,11 +12,37 @@ export type RedesignArticle = {
   tags: string[];
 };
 
+export type FollowTopic = {
+  id: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  category: string;
+  updatedAt: string;
+  resultCount: number;
+  articleIds: string[];
+  insightId: string;
+  status: "fresh" | "scheduled";
+};
+
+export type Insight = {
+  id: string;
+  title: string;
+  topicId: string;
+  topicTitle: string;
+  generatedAt: string;
+  summary: string;
+  points: string[];
+  tags: string[];
+  references: { title: string; source: string; url: string }[];
+  relatedArticleIds: string[];
+};
+
 export const redesignArticles: RedesignArticle[] = [
   {
     id: "ai-plan-2030",
     title: "新一代人工智能发展进入系统化落地阶段",
-    excerpt: "从模型能力、算力基础设施到行业应用，AI 发展开始由单点突破转向可持续的系统工程。",
+    excerpt: "从模型能力、算力基础设施到行业应用，AI 正由单点突破转向可持续的系统工程。",
     category: "AI",
     source: "智见研究",
     time: "5 分钟前",
@@ -59,8 +85,8 @@ export const redesignArticles: RedesignArticle[] = [
     score: 8.2,
     tags: ["宏观政策", "实体经济", "观察"],
     body: [
-      "近期政策信号继续强调稳定预期和支持实体经济。市场更关注后续工具的节奏、覆盖范围与实际传导效果。",
-      "从公开表达看，结构性支持仍将围绕重点行业、民营企业和科技创新展开。",
+      "近期政策信号继续强调稳定预期和支持实体经济，市场更关注后续工具的节奏、覆盖范围与实际传导效果。",
+      "从公开表述看，结构性支持仍将围绕重点行业、民营企业和科技创新展开。",
       "相关内容不构成投资建议，具体影响需要结合正式文件与后续数据。"
     ]
   },
@@ -131,23 +157,110 @@ export const redesignArticles: RedesignArticle[] = [
   }
 ];
 
-export const featuredArticle = redesignArticles[0];
-export const homeFeed = redesignArticles.slice(1, 4);
-export const savedArticles = [redesignArticles[1], redesignArticles[3], redesignArticles[4]];
+export const followTopics: FollowTopic[] = [
+  {
+    id: "ai-agents",
+    title: "AI Agent 产品进展",
+    description: "追踪智能体产品、模型能力和真实落地案例。",
+    keywords: ["AI Agent", "智能体", "工作流"],
+    category: "科技",
+    updatedAt: "12 分钟前",
+    resultCount: 18,
+    articleIds: ["ai-plan-2030", "domestic-ai-chip", "gene-editing"],
+    insightId: "ai-agents-weekly",
+    status: "fresh"
+  },
+  {
+    id: "semiconductor",
+    title: "半导体产业观察",
+    description: "关注芯片设计、先进制造与国内供应链变化。",
+    keywords: ["半导体", "AI 芯片", "先进制造"],
+    category: "产业",
+    updatedAt: "今天 09:20",
+    resultCount: 12,
+    articleIds: ["domestic-ai-chip", "charging-network"],
+    insightId: "semiconductor-brief",
+    status: "scheduled"
+  },
+  {
+    id: "policy-watch",
+    title: "政策与城市机会",
+    description: "汇总宏观政策、人才政策与城市公共服务变化。",
+    keywords: ["宏观政策", "人才政策", "城市发展"],
+    category: "政策",
+    updatedAt: "昨天 18:40",
+    resultCount: 9,
+    articleIds: ["liquidity-policy", "talent-policy"],
+    insightId: "policy-opportunity",
+    status: "fresh"
+  }
+];
+
+export const insights: Insight[] = [
+  {
+    id: "ai-agents-weekly",
+    title: "AI Agent 正从演示能力转向稳定工作流",
+    topicId: "ai-agents",
+    topicTitle: "AI Agent 产品进展",
+    generatedAt: "今天 10:36",
+    summary: "本周智能体产品的共同变化，是从通用演示转向任务边界清楚、结果可校验的工作流。企业侧更重视权限、成本和可追溯性，个人产品则在降低配置门槛。",
+    points: [
+      "智能体产品开始用完成率、人工接管率和单次成本衡量真实价值。",
+      "知识库、浏览器操作和代码执行仍是最常见的三类工具能力。",
+      "面向普通用户的产品正在隐藏模型、运行和供应商等技术概念。"
+    ],
+    tags: ["AI Agent", "产品趋势", "工作流"],
+    references: [
+      { title: "人工智能发展进入系统化落地阶段", source: "智见研究", url: "/articles/ai-plan-2030" },
+      { title: "国产 AI 芯片算力效率持续提升", source: "36氪", url: "/articles/domestic-ai-chip" }
+    ],
+    relatedArticleIds: ["ai-plan-2030", "domestic-ai-chip", "gene-editing"]
+  },
+  {
+    id: "semiconductor-brief",
+    title: "算力竞争进入软硬件协同阶段",
+    topicId: "semiconductor",
+    topicTitle: "半导体产业观察",
+    generatedAt: "今天 09:24",
+    summary: "芯片性能仍然重要，但开发工具、调度效率和应用迁移成本正在成为采购与落地决策中的关键变量。",
+    points: ["软件生态决定峰值性能能否被稳定使用。", "能效与集群互联成为下一阶段重点。", "客户验证周期仍是判断产业进展的重要依据。"],
+    tags: ["半导体", "算力", "产业"],
+    references: [{ title: "国产 AI 芯片突破关键技术", source: "36氪", url: "/articles/domestic-ai-chip" }],
+    relatedArticleIds: ["domestic-ai-chip", "charging-network"]
+  },
+  {
+    id: "policy-opportunity",
+    title: "近期政策信号更重视精准支持与长期预期",
+    topicId: "policy-watch",
+    topicTitle: "政策与城市机会",
+    generatedAt: "昨天 18:45",
+    summary: "宏观与城市政策都在从普遍覆盖转向更明确的人群和产业目标，后续需要持续观察执行细则与服务可达性。",
+    points: ["结构性工具继续支持科技创新和民营企业。", "城市人才政策更关注落地后的公共服务。", "正式文件与执行口径是判断影响的主要依据。"],
+    tags: ["政策", "城市", "趋势"],
+    references: [
+      { title: "政策强调保持流动性合理充裕", source: "财新网", url: "/articles/liquidity-policy" },
+      { title: "城市人才新政聚焦青年发展", source: "城市观察", url: "/articles/talent-policy" }
+    ],
+    relatedArticleIds: ["liquidity-policy", "talent-policy"]
+  }
+];
 
 export const rankingItems = [
-  { rank: 1, title: "人工智能应用进入规模化验证期", heat: "98.6 万" },
-  { rank: 2, title: "新一代气象卫星完成关键测试", heat: "72.4 万" },
-  { rank: 3, title: "多地优化人才政策和公共服务", heat: "54.3 万" },
-  { rank: 4, title: "端侧智能带动设备体验升级", heat: "38.7 万" },
-  { rank: 5, title: "新能源基础设施加速补齐短板", heat: "29.1 万" }
+  { rank: 1, title: "人工智能应用进入规模化验证期", heat: "98.6 万", articleId: "ai-plan-2030" },
+  { rank: 2, title: "新一代气象卫星完成关键测试", heat: "72.4 万", articleId: "weather-satellite" },
+  { rank: 3, title: "多地优化人才政策和公共服务", heat: "54.3 万", articleId: "talent-policy" },
+  { rank: 4, title: "国产算力平台加快软件适配", heat: "38.7 万", articleId: "domestic-ai-chip" },
+  { rank: 5, title: "新能源基础设施进入提质阶段", heat: "29.1 万", articleId: "charging-network" }
 ];
 
-export const featuredTopics = [
-  { id: "ai", title: "AI 前沿探索", subtitle: "洞察模型与智能体新进展", count: 128, image: "/redesign-assets/ai-chip.webp" },
-  { id: "business", title: "城市与商业", subtitle: "观察政策与产业趋势", count: 96, image: "/redesign-assets/city-economy.webp" },
-  { id: "space", title: "太空与未来", subtitle: "关注航天与气候科技", count: 73, image: "/redesign-assets/satellite.webp" }
-];
+export const featuredArticle = redesignArticles[0];
+export const homeFeed = redesignArticles.slice(1, 5);
+export const savedArticles = [redesignArticles[1], redesignArticles[3], redesignArticles[4]];
+
+export const featuredTopics = followTopics.map((topic, index) => ({
+  ...topic,
+  image: ["/redesign-assets/ai-chip.webp", "/redesign-assets/dna-tech.webp", "/redesign-assets/talent-city.webp"][index]
+}));
 
 export const growthItems = [
   { article: redesignArticles[4], growth: 126 },
@@ -157,4 +270,12 @@ export const growthItems = [
 
 export function getRedesignArticle(id: string) {
   return redesignArticles.find((article) => article.id === id) ?? null;
+}
+
+export function getFollowTopic(id: string) {
+  return followTopics.find((topic) => topic.id === id) ?? null;
+}
+
+export function getInsight(id: string) {
+  return insights.find((insight) => insight.id === id) ?? null;
 }

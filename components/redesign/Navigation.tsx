@@ -1,70 +1,71 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Bell,
-  Crosshair,
-  MagnifyingGlass
-} from "@phosphor-icons/react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Bell, Crosshair, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { FormEvent, useState } from "react";
 
 export function TopNav({
   title = "AI 信息雷达",
-  subtitle = "聚合每日重要资讯",
-  showBrand = true
+  subtitle = "聚合每天与你有关的重要资讯",
+  showBrand = true,
+  showSearch = true
 }: {
   title?: string;
   subtitle?: string;
   showBrand?: boolean;
+  showSearch?: boolean;
 }) {
   return (
     <header className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           {showBrand ? (
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2878ff] text-white shadow-[0_10px_24px_rgba(40,120,255,0.22)] lg:hidden">
-              <Crosshair size={24} weight="duotone" />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#2563eb] text-white shadow-[0_8px_18px_rgba(37,99,235,0.2)] lg:hidden">
+              <Crosshair size={22} weight="duotone" />
             </span>
           ) : null}
           <div className="min-w-0">
-            <h1 className="truncate text-[1.75rem] font-black leading-tight tracking-[0] text-[#10213b] sm:text-3xl">{title}</h1>
-            <p className="mt-1 text-sm font-semibold text-[#718096]">{subtitle}</p>
+            <h1 className="text-2xl font-black leading-tight sm:text-[1.8rem]">{title}</h1>
+            <p className="mt-1 text-sm font-semibold text-[var(--app-text-muted)]">{subtitle}</p>
           </div>
         </div>
-        <NotificationButton />
+        <Link href="/profile" aria-label="查看通知设置" className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] text-[var(--app-text)] lg:hidden">
+          <Bell size={21} />
+          <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[#ef5f4c] ring-2 ring-[var(--app-surface)]" />
+        </Link>
       </div>
-      <SearchBar className="w-full lg:max-w-xl" />
+      {showSearch ? <SearchBar className="w-full lg:max-w-lg" /> : null}
     </header>
   );
 }
 
-export function SearchBar({ className = "" }: { className?: string }) {
-  const [query, setQuery] = useState("");
+export function SearchBar({ className = "", initialValue = "" }: { className?: string; initialValue?: string }) {
+  const [query, setQuery] = useState(initialValue);
+  const router = useRouter();
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = query.trim();
+    router.push(value ? `/discover?q=${encodeURIComponent(value)}` : "/discover");
+  }
 
   return (
-    <label className={`flex min-h-12 items-center gap-3 rounded-2xl border border-[#dfe8f3] bg-white px-4 shadow-[0_8px_24px_rgba(65,91,130,0.06)] focus-within:border-[#8ab7ff] focus-within:ring-4 focus-within:ring-[#2878ff]/10 ${className}`}>
-      <MagnifyingGlass size={21} className="shrink-0 text-[#718096]" />
+    <form onSubmit={submit} role="search" className={`flex min-h-12 items-center gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] px-4 shadow-[0_6px_18px_rgba(28,46,78,0.05)] focus-within:border-[var(--app-primary)] ${className}`}>
+      <MagnifyingGlass size={20} className="shrink-0 text-[var(--app-text-muted)]" />
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="搜索新闻、话题或来源"
-        className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#10213b] outline-none placeholder:text-[#9aa7b8]"
+        placeholder="搜索新闻、主题或来源"
+        aria-label="搜索新闻、主题或来源"
+        className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[var(--app-text)] outline-none placeholder:text-[var(--app-text-muted)]"
       />
       {query ? (
-        <button type="button" onClick={() => setQuery("")} className="rounded-full bg-[#edf3fb] px-2.5 py-1 text-xs font-bold text-[#607089]">
-          清除
+        <button type="button" onClick={() => setQuery("")} aria-label="清空搜索" className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]">
+          <X size={16} />
         </button>
       ) : null}
-    </label>
-  );
-}
-
-export function NotificationButton() {
-  return (
-    <Link href="/redesign/profile" aria-label="查看通知" className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#dfe8f3] bg-white text-[#10213b] shadow-[0_8px_24px_rgba(65,91,130,0.06)] transition hover:border-[#9fc3ff] hover:text-[#2878ff] lg:hidden">
-      <Bell size={22} weight="regular" />
-      <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[#ff654d] ring-2 ring-white" />
-    </Link>
+    </form>
   );
 }
 
@@ -79,16 +80,18 @@ export function CategoryTabs({
 
   return (
     <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
-      <div className="flex min-w-max items-center gap-1 border-b border-[#e1e8f1]">
+      <div className="flex min-w-max items-center gap-1 border-b border-[var(--app-line)]" role="tablist" aria-label="内容分类">
         {items.map((item) => (
           <button
             key={item}
             type="button"
+            role="tab"
+            aria-selected={active === item}
             onClick={() => setActive(item)}
-            className={`relative min-h-12 px-4 text-sm font-black transition ${active === item ? "text-[#10213b]" : "text-[#718096] hover:text-[#10213b]"}`}
+            className={`relative min-h-11 px-4 text-sm font-black transition-colors ${active === item ? "text-[var(--app-text)]" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
           >
             {item}
-            {active === item ? <span className="absolute inset-x-4 bottom-0 h-1 rounded-full bg-[#2878ff]" /> : null}
+            {active === item ? <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-[var(--app-primary)]" /> : null}
           </button>
         ))}
       </div>
@@ -99,9 +102,9 @@ export function CategoryTabs({
 export function SectionHeader({ title, href, actionLabel = "查看更多" }: { title: string; href?: string; actionLabel?: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h2 className="text-lg font-black tracking-[0] text-[#10213b] sm:text-xl">{title}</h2>
+      <h2 className="text-lg font-black sm:text-xl">{title}</h2>
       {href ? (
-        <Link href={href} className="rounded-full px-2 py-1 text-xs font-bold text-[#718096] transition hover:bg-[#edf3fb] hover:text-[#2878ff]">
+        <Link href={href} className="text-sm font-bold text-[var(--app-text-muted)] hover:text-[var(--app-primary)]">
           {actionLabel}
         </Link>
       ) : null}

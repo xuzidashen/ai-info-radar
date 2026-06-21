@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AI 信息雷达",
-  description: "个人关键词信息搜索与 AI 总结工具"
+  description: "每天读懂与你有关的重要变化"
 };
 
 export default function RootLayout({
@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <body>
         <ToastProvider>
           <AppShell>{children}</AppShell>
