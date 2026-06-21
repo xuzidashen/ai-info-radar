@@ -495,7 +495,7 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
         <input id="edit-topic-keywords" value={keywords} onChange={(event) => setKeywords(event.target.value)} className="app-input mt-2" />
         <div className="mt-8 flex flex-col gap-2 border-t border-[var(--app-line)] pt-5 sm:flex-row sm:justify-end">
           <Link href={`/topics/${topic.id}`} className="app-button-secondary justify-center">取消</Link>
-          <button type="submit" disabled={saving || !title.trim()} className="app-button justify-center disabled:opacity-60">{saving ? "保存中" : "保存主题"}</button>
+          <button type="submit" disabled={saving || !title.trim()} className="app-button justify-center disabled:opacity-60">{saving ? "保存中" : "保存修改"}</button>
         </div>
       </form>
     </div>
@@ -525,6 +525,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
   const [contentHref, setContentHref] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [busy, setBusy] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     if (!topic) setResolvedTopic(readStoredTopics().find((item) => item.id === id) ?? null);
@@ -592,15 +593,17 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
           <div className="min-w-0"><span className="app-chip text-[var(--app-primary)]">{resolvedTopic.category}</span><h1 className="mt-3 text-3xl font-black leading-tight">{resolvedTopic.title}</h1><p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-[var(--app-text-muted)]">{resolvedTopic.description}</p><div className="mt-4 flex flex-wrap gap-2">{resolvedTopic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}</div></div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <button type="button" onClick={updateNow} disabled={status === "collecting" || status === "summarizing"} className="app-button disabled:cursor-wait disabled:opacity-70"><Lightning size={18} weight="fill" />{status === "collecting" || status === "summarizing" ? "正在更新" : "立即更新"}</button>
-            <details className="relative">
-              <summary className="app-button-secondary list-none"><DotsThree size={18} weight="bold" />更多</summary>
+            <div className="relative">
+              <button type="button" onClick={() => setMoreOpen((current) => !current)} className="app-button-secondary"><DotsThree size={18} weight="bold" />更多</button>
+              {moreOpen ? (
               <div className="absolute right-0 top-12 z-30 w-44 overflow-hidden rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-1 shadow-[0_18px_50px_rgba(28,46,78,0.16)]">
                 <Link href={`/topics/${resolvedTopic.id}/edit`} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-bold hover:bg-[var(--app-surface-muted)]"><PencilSimple size={16} />编辑主题</Link>
                 <a href="#update-records" className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-bold hover:bg-[var(--app-surface-muted)]"><ClockCounterClockwise size={16} />查看更新记录</a>
                 <a href="#advanced-info" className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-bold hover:bg-[var(--app-surface-muted)]"><FileText size={16} />进入高级信息</a>
                 <button type="button" onClick={() => setConfirmAction({ type: "delete", topic: resolvedTopic })} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-bold text-[#d94a3a] hover:bg-[var(--app-surface-muted)]"><Trash size={16} />删除主题</button>
               </div>
-            </details>
+              ) : null}
+            </div>
           </div>
         </div>
         <p className={`mt-5 text-sm font-bold ${status === "done" ? "text-[var(--app-positive)]" : status === "error" || status === "empty" ? "text-[#e9543f]" : "text-[var(--app-text-muted)]"}`}>
