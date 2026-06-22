@@ -1,7 +1,6 @@
 import type { InfoItem } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { MockSearchProvider } from "@/lib/providers/search/mockSearchProvider";
 import { runSearchProvider } from "@/lib/providers/search";
 import type { NormalizedSearchResult, SearchRunResult } from "@/lib/providers/search/types";
 import { runSummaryProvider } from "@/lib/providers/summary";
@@ -318,7 +317,7 @@ async function runSearchWithQualityFallback(input: {
   const searchRun = await runSearchProvider({
     ...input,
     maxResults: 8
-  });
+  }, { allowFallback: false });
   const processed = processSearchWithCounts(searchRun.results, input.keywordName);
 
   if (processed.processedResults.length > 0) {
@@ -343,34 +342,23 @@ async function runSearchWithQualityFallback(input: {
     };
   }
 
-  const mockResult = await new MockSearchProvider().search({
-    ...input,
-    maxResults: 8
-  });
-  const mockProcessed = processSearchWithCounts(mockResult.results, input.keywordName);
   const latencyMs = Date.now() - startedAt;
+  const errorMessage =
+    searchRun.requestedProvider === "tavily"
+      ? "搜索失败：Tavily 返回的结果在筛选后没有可用内容，请调整主题标题、关键词或稍后重试。"
+      : "搜索失败：mock 搜索结果在筛选后没有可用内容。";
 
   await recordProviderSnapshot({
     providerType: "search",
-    providerName: mockResult.provider,
-    success: mockProcessed.processedResults.length > 0,
-    fallbackUsed: true,
+    providerName: searchRun.provider,
+    success: false,
+    fallbackUsed: searchRun.fallbackUsed,
     latencyMs,
-    resultCount: mockProcessed.processedResults.length,
-    errorMessage: searchRun.error ?? "Search results were empty after quality filtering"
+    resultCount: 0,
+    errorMessage: searchRun.error ?? errorMessage
   });
 
-  return {
-    ...mockResult,
-    requestedProvider: searchRun.requestedProvider,
-    fallbackUsed: true,
-    error: searchRun.error ?? "Search results were empty after quality filtering",
-    processedResults: mockProcessed.processedResults,
-    rawResultCount: searchRun.results.length,
-    filteredCount: mockProcessed.filteredCount,
-    dedupedCount: mockProcessed.dedupedCount,
-    latencyMs
-  };
+  throw new Error(searchRun.error ?? errorMessage);
 }
 
 async function ensureTopicKeyword(topic: {
@@ -471,26 +459,29 @@ async function saveSearchAndSummary(input: {
   });
 
   const summaryStartedAt = Date.now();
-  const summaryRun = await runSummaryProvider({
-    keyword: {
-      name: input.topic.name,
-      category: keywordCategory,
-      description: searchContext.description
+  const summaryRun = await runSummaryProvider(
+    {
+      keyword: {
+        name: input.topic.name,
+        category: keywordCategory,
+        description: searchContext.description
+      },
+      infoItems: savedItems.map((item) => ({
+        title: item.title,
+        source: item.source,
+        url: item.url,
+        summary: item.summary,
+        importance: item.importance as Importance,
+        publishedAt: item.publishedAt.toISOString(),
+        provider: item.provider,
+        score: item.score,
+        credibilityLabel: item.credibilityLabel as "high" | "medium" | "low" | "unknown" | null,
+        credibilityScore: item.credibilityScore,
+        credibilityReason: item.credibilityReason
+      }))
     },
-    infoItems: savedItems.map((item) => ({
-      title: item.title,
-      source: item.source,
-      url: item.url,
-      summary: item.summary,
-      importance: item.importance as Importance,
-      publishedAt: item.publishedAt.toISOString(),
-      provider: item.provider,
-      score: item.score,
-      credibilityLabel: item.credibilityLabel as "high" | "medium" | "low" | "unknown" | null,
-      credibilityScore: item.credibilityScore,
-      credibilityReason: item.credibilityReason
-    }))
-  });
+    { allowFallback: false }
+  );
   await recordProviderSnapshot({
     providerType: "summary",
     providerName: summaryRun.provider,
@@ -532,30 +523,33 @@ async function runFactorAnalysis(input: {
   savedItems: InfoItem[];
 }) {
   const factorStartedAt = Date.now();
-  const factorRun = await runFactorProvider({
-    keyword: {
-      id: input.keywordId,
-      name: input.topic.name,
-      category: input.keywordCategory,
-      description: input.topic.description
+  const factorRun = await runFactorProvider(
+    {
+      keyword: {
+        id: input.keywordId,
+        name: input.topic.name,
+        category: input.keywordCategory,
+        description: input.topic.description
+      },
+      infoItems: input.savedItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        source: item.source,
+        url: item.url,
+        publishedAt: item.publishedAt.toISOString(),
+        summary: item.summary,
+        importance: item.importance as Importance,
+        sentiment: item.sentiment as Sentiment,
+        provider: item.provider,
+        score: item.score,
+        credibilityLabel: item.credibilityLabel as "high" | "medium" | "low" | "unknown" | null,
+        credibilityScore: item.credibilityScore,
+        credibilityReason: item.credibilityReason,
+        rawContent: item.rawContent
+      }))
     },
-    infoItems: input.savedItems.map((item) => ({
-      id: item.id,
-      title: item.title,
-      source: item.source,
-      url: item.url,
-      publishedAt: item.publishedAt.toISOString(),
-      summary: item.summary,
-      importance: item.importance as Importance,
-      sentiment: item.sentiment as Sentiment,
-      provider: item.provider,
-      score: item.score,
-      credibilityLabel: item.credibilityLabel as "high" | "medium" | "low" | "unknown" | null,
-      credibilityScore: item.credibilityScore,
-      credibilityReason: item.credibilityReason,
-      rawContent: item.rawContent
-    }))
-  });
+    { allowFallback: false }
+  );
   await recordProviderSnapshot({
     providerType: "factor",
     providerName: factorRun.provider,

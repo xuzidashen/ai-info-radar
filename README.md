@@ -294,7 +294,27 @@ TAVILY_API_KEY="your_tavily_key"
 DEEPSEEK_API_KEY="your_deepseek_key"
 ```
 
-API Key 只放在 `.env`，不要写到前端代码。
+真实模式需要在 Vercel Project Settings -> Environment Variables 中配置：
+
+```env
+SEARCH_PROVIDER=tavily
+SUMMARY_PROVIDER=deepseek
+FACTOR_PROVIDER=deepseek
+LINKAGE_PROVIDER=deepseek
+TAVILY_API_KEY=你的 Tavily Key
+DEEPSEEK_API_KEY=你的 DeepSeek Key
+```
+
+保留 mock 模式可使用：
+
+```env
+SEARCH_PROVIDER=mock
+SUMMARY_PROVIDER=mock
+FACTOR_PROVIDER=mock
+LINKAGE_PROVIDER=mock
+```
+
+用户点击“立即更新”时才会触发真实 Tavily / DeepSeek 调用；首页首屏不会自动跑真实搜索。API Key 只放在 Vercel 或本地 `.env`，不要写到前端代码。缺少 `TAVILY_API_KEY` 或 `DEEPSEEK_API_KEY` 时，主流程会显示明确错误并允许重试。
 
 `CRON_SECRET` 用于保护 `GET/POST /api/schedules/run-due`。如果配置了该值，请求必须带 header：
 

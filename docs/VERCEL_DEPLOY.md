@@ -31,6 +31,28 @@ ENABLE_SETUP_WIZARD=false
 DEFAULT_TIMEZONE=Asia/Shanghai
 ```
 
+Mock mode:
+
+```env
+SEARCH_PROVIDER=mock
+SUMMARY_PROVIDER=mock
+FACTOR_PROVIDER=mock
+LINKAGE_PROVIDER=mock
+```
+
+Real provider mode:
+
+```env
+SEARCH_PROVIDER=tavily
+SUMMARY_PROVIDER=deepseek
+FACTOR_PROVIDER=deepseek
+LINKAGE_PROVIDER=deepseek
+TAVILY_API_KEY=你的 Tavily Key
+DEEPSEEK_API_KEY=你的 DeepSeek Key
+```
+
+Tavily and DeepSeek are called only from server routes when the user runs a topic update. Do not expose API keys in frontend code, screenshots, Android config, or committed files. If `TAVILY_API_KEY` or `DEEPSEEK_API_KEY` is missing in real mode, the main flow returns a clear retryable error instead of falling back silently.
+
 `DATABASE_PROVIDER=postgres` may appear in older docs or health checks, but Prisma does not depend on it.
 
 ## Build

@@ -26,6 +26,17 @@ const directions = ["新闻动态", "政策变化", "公司进展", "学习资�
 
 type StoredTopic = FollowTopic & { createdAt: string };
 type ConfirmAction = { type: "delete" | "archive" | "bulk-delete" | "bulk-archive"; topic?: FollowTopic };
+type RunStatus = "idle" | "searching" | "filtering" | "summarizing" | "reporting" | "done" | "empty" | "error";
+type RunTopicResponse = {
+  message?: string;
+  insightHref?: string;
+  contentHref?: string;
+  localFallback?: boolean;
+  itemCount?: number;
+  reportCount?: number;
+  error?: string;
+  reason?: string;
+};
 
 function readStoredTopics(): StoredTopic[] {
   try {
@@ -54,6 +65,29 @@ function insightHrefFor(topic: FollowTopic) {
 
 function splitKeywords(value: string) {
   return value.split(/[，,\s]+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
+}
+
+function isRunningStatus(status: RunStatus) {
+  return status === "searching" || status === "filtering" || status === "summarizing" || status === "reporting";
+}
+
+function runStatusText(status: RunStatus, idleText: string, doneText: string, errorText?: string) {
+  if (status === "searching") return "正在搜索最新信息";
+  if (status === "filtering") return "正在筛选有效内容";
+  if (status === "summarizing") return "正在生成摘要";
+  if (status === "reporting") return "正在生成分析结果";
+  if (status === "done") return doneText;
+  if (status === "empty") return "未找到足够内容，可调整关键词后重试。";
+  if (status === "error") return errorText ? `更新失败：${errorText}` : "更新失败，请稍后再试。";
+  return idleText;
+}
+
+function runErrorMessage(data: RunTopicResponse) {
+  if (data.reason === "missing_tavily_key") return data.error || "缺少 TAVILY_API_KEY，请在 Vercel 环境变量中配置。";
+  if (data.reason === "missing_deepseek_key") return data.error || "缺少 DEEPSEEK_API_KEY，请在 Vercel 环境变量中配置。";
+  if (data.reason === "search_failed") return data.error || "搜索失败，请检查 Tavily 配置或稍后重试。";
+  if (data.reason === "ai_failed") return data.error || "AI 总结失败，请检查 DeepSeek 配置或稍后重试。";
+  return data.error || "更新失败，请稍后再试。";
 }
 
 function ConfirmDialog({
@@ -111,22 +145,34 @@ function TopicRow({
   onArchive: (topic: FollowTopic) => void;
 }) {
   const initialInsightHref = insightHrefFor(topic);
-  const [status, setStatus] = useState<"idle" | "updating" | "done">("idle");
+  const [status, setStatus] = useState<RunStatus>("idle");
   const [resultHref, setResultHref] = useState(initialInsightHref);
+  const [errorMessage, setErrorMessage] = useState("");
 
   async function updateNow() {
-    if (status === "updating") return;
-    setStatus("updating");
+    if (isRunningStatus(status)) return;
+    setStatus("searching");
+    setErrorMessage("");
+    window.setTimeout(() => setStatus((current) => (current === "searching" ? "filtering" : current)), 500);
+    window.setTimeout(() => setStatus((current) => (current === "filtering" ? "summarizing" : current)), 1100);
+    window.setTimeout(() => setStatus((current) => (current === "summarizing" ? "reporting" : current)), 1700);
 
     try {
       const response = await fetch(`/api/main-flow/topics/${topic.id}/run`, { method: "POST" });
-      if (!response.ok) throw new Error("更新失败");
+      const data = await response.json().catch(() => ({})) as RunTopicResponse;
+      if (!response.ok) throw new Error(runErrorMessage(data));
 
-      const data = await response.json() as { insightHref?: string; localFallback?: boolean };
       setResultHref(data.localFallback ? initialInsightHref : data.insightHref ?? resultHref);
       setStatus("done");
-    } catch {
-      window.setTimeout(() => setStatus("done"), 700);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "更新失败，请稍后再试。";
+      if (topic.id.startsWith("custom-")) {
+        setResultHref(initialInsightHref);
+        setStatus("done");
+      } else {
+        setErrorMessage(message);
+        setStatus("error");
+      }
     }
   }
 
@@ -147,7 +193,7 @@ function TopicRow({
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{topic.description}</p>
             <div className="mt-3 flex flex-wrap gap-2">{topic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}</div>
             <p className="mt-3 text-xs font-bold text-[var(--app-text-muted)]">
-              {status === "updating" ? "正在整理最新内容…" : status === "done" ? "已完成本次更新，已生成分析结果" : `最近更新 ${topic.updatedAt} · ${topic.resultCount} 条结果`}
+              {runStatusText(status, `最近更新 ${topic.updatedAt} · ${topic.resultCount} 条结果`, "已完成本次更新，已生成分析结果", errorMessage)}
             </p>
           </div>
         </div>
@@ -156,7 +202,7 @@ function TopicRow({
       <div className="mt-4 flex flex-wrap gap-2">
         {!management ? (
           <>
-            <button type="button" onClick={updateNow} disabled={status === "updating"} className="app-button-secondary min-h-10 px-3 py-2 text-xs disabled:cursor-wait disabled:opacity-70"><Lightning size={16} weight="fill" />{status === "updating" ? "正在更新" : "立即更新"}</button>
+            <button type="button" onClick={updateNow} disabled={isRunningStatus(status)} className="app-button-secondary min-h-10 px-3 py-2 text-xs disabled:cursor-wait disabled:opacity-70"><Lightning size={16} weight="fill" />{isRunningStatus(status) ? "正在更新" : status === "error" ? "重试更新" : "立即更新"}</button>
             <Link href={resultHref} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><Sparkle size={16} />查看分析</Link>
           </>
         ) : (
@@ -520,9 +566,11 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
   const { showToast } = useToast();
   const router = useRouter();
   const [resolvedTopic, setResolvedTopic] = useState<FollowTopic | null>(topic);
-  const [status, setStatus] = useState<"idle" | "collecting" | "summarizing" | "done" | "empty" | "error">("idle");
+  const [status, setStatus] = useState<RunStatus>("idle");
   const [resultHref, setResultHref] = useState<string | null>(null);
   const [contentHref, setContentHref] = useState<string | null>(null);
+  const [runMessage, setRunMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -538,27 +586,35 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
   const insightHref = insightHrefFor(resolvedTopic);
 
   async function updateNow() {
-    if (status === "collecting" || status === "summarizing") return;
+    if (isRunningStatus(status)) return;
     const currentTopic = resolvedTopic;
     if (!currentTopic) return;
 
-    setStatus("collecting");
-    window.setTimeout(() => setStatus((current) => (current === "collecting" ? "summarizing" : current)), 600);
+    setStatus("searching");
+    setRunMessage("");
+    setErrorMessage("");
+    window.setTimeout(() => setStatus((current) => (current === "searching" ? "filtering" : current)), 500);
+    window.setTimeout(() => setStatus((current) => (current === "filtering" ? "summarizing" : current)), 1100);
+    window.setTimeout(() => setStatus((current) => (current === "summarizing" ? "reporting" : current)), 1700);
 
     try {
       const response = await fetch(`/api/main-flow/topics/${currentTopic.id}/run`, { method: "POST" });
-      if (!response.ok) throw new Error("更新失败");
+      const data = await response.json().catch(() => ({})) as RunTopicResponse;
+      if (!response.ok) throw new Error(runErrorMessage(data));
 
-      const data = await response.json() as { insightHref?: string; contentHref?: string; localFallback?: boolean };
       setResultHref(data.localFallback ? insightHref : data.insightHref ?? insightHref);
       setContentHref(data.contentHref ?? `/topics/${currentTopic.id}`);
+      setRunMessage(data.message || "已完成本次更新");
       setStatus("done");
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "更新失败，请稍后再试。";
       if (currentTopic.id.startsWith("custom-")) {
         setResultHref(insightHref);
         setContentHref(`/topics/${currentTopic.id}`);
+        setRunMessage("已完成本次更新：当前为本地演示模式，可查看临时分析结果。");
         setStatus("done");
       } else {
+        setErrorMessage(message);
         setStatus("error");
       }
     }
@@ -592,7 +648,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0"><span className="app-chip text-[var(--app-primary)]">{resolvedTopic.category}</span><h1 className="mt-3 text-3xl font-black leading-tight">{resolvedTopic.title}</h1><p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-[var(--app-text-muted)]">{resolvedTopic.description}</p><div className="mt-4 flex flex-wrap gap-2">{resolvedTopic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}</div></div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <button type="button" onClick={updateNow} disabled={status === "collecting" || status === "summarizing"} className="app-button disabled:cursor-wait disabled:opacity-70"><Lightning size={18} weight="fill" />{status === "collecting" || status === "summarizing" ? "正在更新" : "立即更新"}</button>
+            <button type="button" onClick={updateNow} disabled={isRunningStatus(status)} className="app-button disabled:cursor-wait disabled:opacity-70"><Lightning size={18} weight="fill" />{isRunningStatus(status) ? "正在更新" : status === "error" ? "重试更新" : "立即更新"}</button>
             <div className="relative">
               <button type="button" onClick={() => setMoreOpen((current) => !current)} className="app-button-secondary"><DotsThree size={18} weight="bold" />更多</button>
               {moreOpen ? (
@@ -607,22 +663,13 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
           </div>
         </div>
         <p className={`mt-5 text-sm font-bold ${status === "done" ? "text-[var(--app-positive)]" : status === "error" || status === "empty" ? "text-[#e9543f]" : "text-[var(--app-text-muted)]"}`}>
-          {status === "collecting"
-            ? "正在整理最新内容…"
-            : status === "summarizing"
-              ? "正在生成分析结果…"
-              : status === "done"
-                ? "已完成本次更新：发现 3 条新内容，生成 1 条分析结果。"
-                : status === "empty"
-                  ? "未找到足够内容，可调整关键词后重试。"
-                  : status === "error"
-                    ? "更新失败，请稍后再试。"
-                    : `最近更新 ${resolvedTopic.updatedAt}`}
+          {runStatusText(status, `最近更新 ${resolvedTopic.updatedAt}`, runMessage || "已完成本次更新", errorMessage)}
         </p>
-        {status === "done" ? (
+        {status === "done" || status === "error" ? (
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href={resultHref ?? insightHref} className="app-button"><Sparkle size={17} />查看分析结果</Link>
-            <Link href={contentHref ?? `/topics/${resolvedTopic.id}`} className="app-button-secondary"><FileText size={17} />查看相关内容</Link>
+            {status === "done" ? <Link href={resultHref ?? insightHref} className="app-button"><Sparkle size={17} />查看分析结果</Link> : null}
+            {status === "done" ? <Link href={contentHref ?? `/topics/${resolvedTopic.id}`} className="app-button-secondary"><FileText size={17} />查看相关内容</Link> : null}
+            {status === "error" ? <button type="button" onClick={updateNow} className="app-button-secondary"><Lightning size={17} weight="fill" />重试</button> : null}
           </div>
         ) : null}
       </header>
