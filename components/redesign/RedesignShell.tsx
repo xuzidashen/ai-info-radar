@@ -45,7 +45,7 @@ export function RedesignShell({
           </span>
           <span className="min-w-0">
             <strong className="block truncate text-lg font-black">AI 信息雷达</strong>
-            <span className="block truncate text-xs font-semibold text-[var(--app-text-muted)]">每天读懂重要变化</span>
+            <span className="block truncate text-xs font-semibold text-[var(--app-text-muted)]">只追踪你真正关注的信息</span>
           </span>
         </Link>
 

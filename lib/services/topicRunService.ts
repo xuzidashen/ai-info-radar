@@ -23,6 +23,7 @@ import { dedupeResults } from "@/lib/utils/dedupeResults";
 import { filterResults } from "@/lib/utils/filterResults";
 import { buildScoreReason, deriveItemTags, toDisplayScore } from "@/lib/utils/itemScoring";
 import { getSourceCredibility } from "@/lib/utils/sourceCredibility";
+import { parseStructuredSummary, structuredSummaryToMarkdown, type StructuredSummary } from "@/lib/utils/summaryParser";
 import { buildTopicSearchContext } from "@/lib/utils/topicPresetContext";
 
 type EnrichedSearchResult = NormalizedSearchResult & {
@@ -190,6 +191,7 @@ function buildReportSources(items: InfoItem[], category: string) {
 
 function buildReportMetadata(input: {
   topicId: string;
+  topicName: string;
   keywordId: string;
   searchProvider: string;
   summaryProvider: string;
@@ -201,12 +203,15 @@ function buildReportMetadata(input: {
   queryText?: string;
   keywords?: string[];
   presetNames?: string[];
+  structuredSummary: StructuredSummary;
 }) {
   const sources = buildReportSources(input.items, input.category);
 
   return {
     topicId: input.topicId,
+    topicName: input.topicName,
     keywordId: input.keywordId,
+    structuredSummary: input.structuredSummary,
     searchProvider: input.searchProvider,
     summaryProvider: input.summaryProvider,
     factorProvider: input.factorProvider ?? undefined,
@@ -316,8 +321,8 @@ async function runSearchWithQualityFallback(input: {
   const startedAt = Date.now();
   const searchRun = await runSearchProvider({
     ...input,
-    maxResults: 8
-  }, { allowFallback: false });
+    maxResults: 5
+  }, { allowFallback: true });
   const processed = processSearchWithCounts(searchRun.results, input.keywordName);
 
   if (processed.processedResults.length > 0) {
@@ -480,7 +485,7 @@ async function saveSearchAndSummary(input: {
         credibilityReason: item.credibilityReason
       }))
     },
-    { allowFallback: false }
+    { allowFallback: true }
   );
   await recordProviderSnapshot({
     providerType: "summary",
@@ -545,7 +550,6 @@ async function runFactorAnalysis(input: {
         credibilityLabel: item.credibilityLabel as "high" | "medium" | "low" | "unknown" | null,
         credibilityScore: item.credibilityScore,
         credibilityReason: item.credibilityReason,
-        rawContent: item.rawContent
       }))
     },
     { allowFallback: false }
@@ -761,6 +765,8 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       topic,
       keywordId: keyword.id
     });
+    const structuredSummary = parseStructuredSummary(commonRun.summaryRun.content);
+    const summaryMarkdown = structuredSummaryToMarkdown(structuredSummary);
     const selectedTemplate = getTemplateById(topic.summaryTemplate);
     const template =
       selectedTemplate?.zoneType === topic.zone.type
@@ -815,6 +821,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       });
       const reportMetadata = buildReportMetadata({
         topicId: topic.id,
+        topicName: topic.name,
         keywordId: keyword.id,
         searchProvider: commonRun.searchRun.provider,
         summaryProvider: commonRun.summaryRun.provider,
@@ -825,7 +832,8 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         category: topic.category,
         queryText: commonRun.searchContext.queryText,
         keywords: commonRun.searchContext.keywords,
-        presetNames: commonRun.searchContext.presetNames
+        presetNames: commonRun.searchContext.presetNames,
+        structuredSummary
       });
       metrics = {
         ...metrics,
@@ -845,7 +853,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
             type: "topic",
             markdown: buildReportMarkdown({
               title: reportTitle,
-              summary: commonRun.summaryRun.content,
+              summary: summaryMarkdown,
               sources: reportSources,
               extraSections: [
                 {
@@ -860,7 +868,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
               followUp: "继续观察高分信息对应的官方公告、产业链反馈和风险信号；财经主题仅做公开信息整理。",
               disclaimer: commonRun.keywordCategory === "finance"
             }),
-            summary: commonRun.summaryRun.content.slice(0, 500),
+            summary: structuredSummary.overview,
             metadata: {
               ...reportMetadata,
               reportEnabled,
@@ -899,6 +907,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
     });
     const reportMetadata = buildReportMetadata({
       topicId: topic.id,
+      topicName: topic.name,
       keywordId: keyword.id,
       searchProvider: commonRun.searchRun.provider,
       summaryProvider: commonRun.summaryRun.provider,
@@ -908,7 +917,8 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       category: topic.category,
       queryText: commonRun.searchContext.queryText,
       keywords: commonRun.searchContext.keywords,
-      presetNames: commonRun.searchContext.presetNames
+      presetNames: commonRun.searchContext.presetNames,
+      structuredSummary
     });
     metrics = {
       ...metrics,
@@ -928,7 +938,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
           type: "topic",
           markdown: buildReportMarkdown({
             title: reportTitle,
-            summary: commonRun.summaryRun.content,
+            summary: summaryMarkdown,
             sources: reportSources,
             extraSections: [
               {
@@ -938,7 +948,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
             ],
             followUp: "继续跟踪高可信来源、发布时间较新的内容和后续官方更新。"
           }),
-          summary: commonRun.summaryRun.content.slice(0, 500),
+          summary: structuredSummary.overview,
           metadata: {
             ...reportMetadata,
             reportEnabled,

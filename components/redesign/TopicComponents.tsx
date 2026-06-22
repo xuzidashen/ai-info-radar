@@ -26,7 +26,7 @@ const directions = ["新闻动态", "政策变化", "公司进展", "学习资�
 
 type StoredTopic = FollowTopic & { createdAt: string };
 type ConfirmAction = { type: "delete" | "archive" | "bulk-delete" | "bulk-archive"; topic?: FollowTopic };
-type RunStatus = "idle" | "searching" | "filtering" | "summarizing" | "reporting" | "done" | "empty" | "error";
+type RunStatus = "idle" | "searching" | "filtering" | "summarizing" | "reporting" | "saving" | "done" | "empty" | "error";
 type RunTopicResponse = {
   message?: string;
   insightHref?: string;
@@ -34,6 +34,13 @@ type RunTopicResponse = {
   localFallback?: boolean;
   itemCount?: number;
   reportCount?: number;
+  candidateCount?: number;
+  overview?: string;
+  provider?: {
+    searchProvider?: string | null;
+    summaryProvider?: string | null;
+    fallbackUsed?: boolean | null;
+  };
   error?: string;
   reason?: string;
 };
@@ -68,7 +75,7 @@ function splitKeywords(value: string) {
 }
 
 function isRunningStatus(status: RunStatus) {
-  return status === "searching" || status === "filtering" || status === "summarizing" || status === "reporting";
+  return status === "searching" || status === "filtering" || status === "summarizing" || status === "reporting" || status === "saving";
 }
 
 function runStatusText(status: RunStatus, idleText: string, doneText: string, errorText?: string) {
@@ -76,6 +83,7 @@ function runStatusText(status: RunStatus, idleText: string, doneText: string, er
   if (status === "filtering") return "正在筛选有效内容";
   if (status === "summarizing") return "正在生成摘要";
   if (status === "reporting") return "正在生成分析结果";
+  if (status === "saving") return "正在保存结果";
   if (status === "done") return doneText;
   if (status === "empty") return "未找到足够内容，可调整关键词后重试。";
   if (status === "error") return errorText ? `更新失败：${errorText}` : "更新失败，请稍后再试。";
@@ -360,13 +368,18 @@ export function TopicsView({ topics }: { topics: FollowTopic[] }) {
   );
 }
 
-export function TopicCreateWizard() {
+export function TopicCreateWizard({ initialTitle = "", initialCategory, initialKeywords = [] }: { initialTitle?: string; initialCategory?: string; initialKeywords?: string[] }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState("");
-  const [direction, setDirection] = useState(directions[0]);
-  const [keywords, setKeywords] = useState("");
+  const [direction, setDirection] = useState(() => {
+    if (initialCategory === "政策") return "政策变化";
+    if (initialCategory === "财经") return "公司进展";
+    if (initialCategory === "学习") return "学习资料";
+    return directions[0];
+  });
+  const [keywords, setKeywords] = useState(initialKeywords.join("，"));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -570,6 +583,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
   const [resultHref, setResultHref] = useState<string | null>(null);
   const [contentHref, setContentHref] = useState<string | null>(null);
   const [runMessage, setRunMessage] = useState("");
+  const [runResult, setRunResult] = useState<{ itemCount: number; reportCount: number; candidateCount: number; overview: string; fallbackUsed: boolean; searchProvider?: string | null; summaryProvider?: string | null } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [busy, setBusy] = useState(false);
@@ -592,10 +606,12 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
 
     setStatus("searching");
     setRunMessage("");
+    setRunResult(null);
     setErrorMessage("");
     window.setTimeout(() => setStatus((current) => (current === "searching" ? "filtering" : current)), 500);
     window.setTimeout(() => setStatus((current) => (current === "filtering" ? "summarizing" : current)), 1100);
     window.setTimeout(() => setStatus((current) => (current === "summarizing" ? "reporting" : current)), 1700);
+    window.setTimeout(() => setStatus((current) => (current === "reporting" ? "saving" : current)), 2400);
 
     try {
       const response = await fetch(`/api/main-flow/topics/${currentTopic.id}/run`, { method: "POST" });
@@ -605,6 +621,15 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
       setResultHref(data.localFallback ? insightHref : data.insightHref ?? insightHref);
       setContentHref(data.contentHref ?? `/topics/${currentTopic.id}`);
       setRunMessage(data.message || "已完成本次更新");
+      setRunResult({
+        itemCount: data.itemCount ?? 0,
+        reportCount: data.reportCount ?? 0,
+        candidateCount: data.candidateCount ?? data.itemCount ?? 0,
+        overview: data.overview || "本次更新已完成，请查看完整分析结果。",
+        fallbackUsed: Boolean(data.localFallback || data.provider?.fallbackUsed),
+        searchProvider: data.provider?.searchProvider,
+        summaryProvider: data.provider?.summaryProvider
+      });
       setStatus("done");
     } catch (error) {
       const message = error instanceof Error ? error.message : "更新失败，请稍后再试。";
@@ -665,6 +690,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
         <p className={`mt-5 text-sm font-bold ${status === "done" ? "text-[var(--app-positive)]" : status === "error" || status === "empty" ? "text-[#e9543f]" : "text-[var(--app-text-muted)]"}`}>
           {runStatusText(status, `最近更新 ${resolvedTopic.updatedAt}`, runMessage || "已完成本次更新", errorMessage)}
         </p>
+        {status === "done" && runResult ? <section className="mt-4 rounded-lg border border-[#b8ddcf] bg-[#eefaf5] p-4"><div className="flex flex-wrap gap-2 text-xs font-black text-[#0f7f5b]"><span className="app-chip">候选 {runResult.candidateCount} 条</span><span className="app-chip">新增 {runResult.itemCount} 条</span><span className="app-chip">分析 {runResult.reportCount} 条</span>{runResult.searchProvider ? <span className="app-chip">搜索 {runResult.searchProvider}</span> : null}{runResult.summaryProvider ? <span className="app-chip">总结 {runResult.summaryProvider}</span> : null}{runResult.fallbackUsed ? <span className="app-chip text-[#b45309]">已临时使用模拟结果</span> : null}</div><p className="mt-3 text-sm font-bold leading-6 text-[#155f48]">{runResult.overview}</p></section> : null}
         {status === "done" || status === "error" ? (
           <div className="mt-4 flex flex-wrap gap-2">
             {status === "done" ? <Link href={resultHref ?? insightHref} className="app-button"><Sparkle size={17} />查看分析结果</Link> : null}
@@ -675,7 +701,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
       </header>
 
       <section className="py-7">
-        <div className="flex items-center justify-between gap-4"><h2 className="text-xl font-black">最近内容</h2><Link href="/discover" className="text-sm font-black text-[var(--app-primary)]">发现更多</Link></div>
+        <div className="flex items-center justify-between gap-4"><h2 className="text-xl font-black">最近内容</h2><Link href="/search" className="text-sm font-black text-[var(--app-primary)]">搜索已有内容</Link></div>
         <div className="mt-4 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">{articles.map((article) => <Link key={article.id} href={`/articles/${article.id}`} className="flex min-h-20 items-center justify-between gap-4 py-4 hover:text-[var(--app-primary)]"><span className="min-w-0"><strong className="line-clamp-2 text-base font-black">{article.title}</strong><span className="mt-1 block text-xs font-bold text-[var(--app-text-muted)]">{article.source} · {article.time}</span></span><ArrowRight size={17} className="shrink-0" /></Link>)}</div>
       </section>
 

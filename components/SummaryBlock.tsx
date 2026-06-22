@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { BookOpenText, Check, Clock3, Copy, FileDown } from "lucide-react";
 
 import { ActionButton } from "@/components/ui/ActionButton";
+import { SummaryRenderer } from "@/components/redesign/SummaryRenderer";
 import { useToast } from "@/components/ui/Toast";
 import type { InfoItemDTO, SummaryDTO } from "@/lib/types";
 
@@ -15,24 +16,6 @@ type MarkdownContext = {
   fallbackUsed?: boolean;
   infoItems?: InfoItemDTO[];
 };
-
-function parseSections(content: string) {
-  const matches = [...content.matchAll(/【([^】]+)】\s*([\s\S]*?)(?=【[^】]+】|$)/g)];
-
-  if (matches.length === 0) {
-    return [
-      {
-        title: "AI 总结",
-        body: content
-      }
-    ];
-  }
-
-  return matches.map((match) => ({
-    title: match[1],
-    body: match[2].trim()
-  }));
-}
 
 function formatDate(value?: string) {
   if (!value) {
@@ -94,7 +77,6 @@ export function SummaryBlock({
   markdownContext?: MarkdownContext;
 }) {
   const source = summary?.content ?? content ?? "";
-  const sections = compact ? parseSections(source).slice(0, 3) : parseSections(source);
   const createdAt = formatDate(summary?.createdAt);
   const providerLabel = summary?.provider ?? provider;
   const [copied, setCopied] = useState<"summary" | "markdown" | null>(null);
@@ -170,14 +152,7 @@ export function SummaryBlock({
         </div>
       </div>
 
-      <div className="mt-5 space-y-4">
-        {sections.map((section) => (
-          <div key={section.title} className="rounded-2xl border border-slate-200/70 bg-slate-50/88 p-4">
-            <h3 className="text-sm font-black text-sky-700">{section.title}</h3>
-            <p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-600">{section.body}</p>
-          </div>
-        ))}
-      </div>
+      <div className="mt-5"><SummaryRenderer content={source} compact={compact} /></div>
     </section>
   );
 }

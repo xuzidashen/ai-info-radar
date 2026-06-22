@@ -1,13 +1,12 @@
 import type { InfoItem, Keyword, WorkspaceZone, ZoneReport, ZoneTopic } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { parseStructuredSummary, type StructuredSummary } from "@/lib/utils/summaryParser";
 import {
-  featuredArticle,
   followTopics,
   getFollowTopic,
   getInsight,
   getRedesignArticle,
-  homeFeed,
   insights as mockInsights,
   rankingItems as mockRankingItems,
   redesignArticles,
@@ -32,7 +31,9 @@ type ReportWithZone = ZoneReport & {
 
 type ReportMetadata = {
   topicId?: string;
+  topicName?: string;
   keywordId?: string;
+  structuredSummary?: StructuredSummary;
   topTags?: string[];
   highScoreItems?: Array<{
     title?: string;
@@ -196,7 +197,7 @@ function splitBody(item: InfoItemWithKeyword) {
   ];
 }
 
-function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle {
+export function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle {
   const category = categoryLabel(item.keyword?.category ?? item.eventType ?? item.importance);
   const tags = [
     category,
@@ -215,7 +216,8 @@ function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle {
     image: imageForText(`${item.title}${item.summary}${category}`),
     score: typeof item.score === "number" ? Math.round(item.score * 10) / 10 : item.importance === "high" ? 8.6 : 7.6,
     body: splitBody(item),
-    tags: tags.length ? tags : ["资讯"]
+    tags: tags.length ? tags : ["资讯"],
+    topicTitle: item.keyword?.name
   };
 }
 
@@ -251,15 +253,17 @@ function firstSentences(text: string, count = 3) {
     .slice(0, count);
 }
 
-function mapReportToInsight(report: ReportWithZone, relatedArticleIds: string[] = []): Insight {
+export function mapReportToInsight(report: ReportWithZone, relatedArticleIds: string[] = []): Insight {
   const metadata = parseMetadata(report.metadata);
-  const summary = report.summary?.trim() || firstSentences(report.markdown, 1)[0] || "本次分析结果已生成，建议结合来源列表继续阅读。";
-  const points = firstSentences(report.markdown, 3);
+  const structured = metadata.structuredSummary ?? parseStructuredSummary(report.summary || report.markdown);
+  const summary = structured.overview || report.summary?.trim() || firstSentences(report.markdown, 1)[0] || "本次分析结果已生成，建议结合来源列表继续阅读。";
+  const points = structured.keyChanges.map((item) => `${item.title}：${item.detail}`);
   const references = metadata.highScoreItems?.length
     ? metadata.highScoreItems.slice(0, 5).map((item, index) => ({
         title: item.title || `参考来源 ${index + 1}`,
         source: item.source || "公开来源",
-        url: item.url || "/discover"
+        url: item.url || "/discover",
+        note: structured.sourceNotes.find((note) => note.url === item.url || note.source === item.source)?.note
       }))
     : [
         {
@@ -273,10 +277,14 @@ function mapReportToInsight(report: ReportWithZone, relatedArticleIds: string[] 
     id: report.id,
     title: report.title,
     topicId: metadata.topicId ?? "topics",
-    topicTitle: report.zone?.name ?? "关注主题",
+    topicTitle: metadata.topicName ?? report.zone?.name ?? "关注主题",
     generatedAt: formatRelativeTime(report.createdAt),
     summary,
     points: points.length ? points : ["已整理最新内容。", "已生成分析摘要。", "建议继续关注后续来源更新。"],
+    keyChanges: structured.keyChanges,
+    whyItMatters: structured.whyItMatters,
+    risks: structured.risks,
+    sourceNotes: structured.sourceNotes,
     tags: metadata.topTags?.length ? metadata.topTags : [report.type, report.zone?.type ?? "分析"],
     references,
     relatedArticleIds
@@ -341,11 +349,19 @@ async function topicsWithReports(limit = 20) {
 }
 
 export async function getMainFlowHomeView() {
+  const fallbackArticleMap = new Map<string, RedesignArticle>();
+  for (const topic of followTopics) {
+    for (const articleId of topic.articleIds.slice(0, 2)) {
+      const article = redesignArticles.find((item) => item.id === articleId);
+      if (article && !fallbackArticleMap.has(article.id)) fallbackArticleMap.set(article.id, { ...article, topicId: topic.id, topicTitle: topic.title });
+    }
+  }
+  const fallbackArticles = Array.from(fallbackArticleMap.values()).slice(0, 6);
   const fallback = {
-    featuredArticle,
-    homeFeed,
-    rankingItems: mockRankingItems,
-    stats: { articleCount: 12, hotCount: 8, topicCount: followTopics.length }
+    topics: followTopics,
+    articles: fallbackArticles,
+    insights: mockInsights.filter((insight) => followTopics.some((topic) => topic.id === insight.topicId)).slice(0, 4),
+    stats: { topicCount: followTopics.length, todayItemCount: fallbackArticles.length, insightCount: mockInsights.length, lastUpdated: followTopics[0]?.updatedAt ?? "暂无更新" }
   };
 
   if (!canUseDatabase()) {
@@ -353,32 +369,52 @@ export async function getMainFlowHomeView() {
   }
 
   return withFallback((async () => {
-    const [items, reports, topicCount] = await Promise.all([
-      recentInfoItems(5),
-      recentReports(2),
-      prisma.zoneTopic.count({ where: activeTopicWhere() })
-    ]);
-    const articles = items.map(mapInfoItemToArticle);
-
-    if (!articles.length && !reports.length) {
-      return fallback;
+    const topics = await prisma.zoneTopic.findMany({
+      where: activeTopicWhere(),
+      orderBy: { updatedAt: "desc" },
+      take: 12,
+      include: {
+        zone: true,
+        keyword: { include: { _count: { select: { infoItems: true, summaries: true } } } }
+      }
+    });
+    if (!topics.length) {
+      return { topics: [], articles: [], insights: [], stats: { topicCount: 0, todayItemCount: 0, insightCount: 0, lastUpdated: "暂无更新" } };
     }
 
-    const rankingItems = articles.slice(0, 5).map((article, index) => ({
-      rank: index + 1,
-      title: article.title,
-      heat: `${Math.max(12, Math.round(article.score * 9))}.0 万`,
-      articleId: article.id
-    }));
+    const keywordIds = topics.flatMap((topic) => topic.keywordId ? [topic.keywordId] : []);
+    const topicByKeyword = new Map(topics.flatMap((topic) => topic.keywordId ? [[topic.keywordId, topic] as const] : []));
+    const topicIds = new Set(topics.map((topic) => topic.id));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [items, reports, todayItemCount] = await Promise.all([
+      keywordIds.length ? prisma.infoItem.findMany({ where: { keywordId: { in: keywordIds } }, orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }], take: 8, include: { keyword: true } }) : [],
+      recentReports(16),
+      keywordIds.length ? prisma.infoItem.count({ where: { keywordId: { in: keywordIds }, createdAt: { gte: today } } }) : 0
+    ]);
+    const articles = items.map((item) => {
+      const topic = topicByKeyword.get(item.keywordId);
+      return { ...mapInfoItemToArticle(item), topicId: topic?.id, topicTitle: topic?.name ?? item.keyword?.name };
+    });
+    const filteredReports = reports.filter((report) => {
+      const topicId = parseMetadata(report.metadata).topicId;
+      return Boolean(topicId && topicIds.has(topicId));
+    });
+    const topicNameById = new Map(topics.map((topic) => [topic.id, topic.name]));
+    const insights = filteredReports.slice(0, 6).map((report) => {
+      const insight = mapReportToInsight(report);
+      return { ...insight, topicTitle: topicNameById.get(insight.topicId) ?? insight.topicTitle };
+    });
 
     return {
-      featuredArticle: articles[0] ?? featuredArticle,
-      homeFeed: articles.slice(1, 5).length ? articles.slice(1, 5) : homeFeed,
-      rankingItems: rankingItems.length ? rankingItems : mockRankingItems,
+      topics: topics.map((topic) => mapTopic(topic, insights.find((insight) => insight.topicId === topic.id)?.id)),
+      articles,
+      insights,
       stats: {
-        articleCount: articles.length || 12,
-        hotCount: rankingItems.length || 8,
-        topicCount: topicCount || followTopics.length
+        topicCount: topics.length,
+        todayItemCount,
+        insightCount: filteredReports.length,
+        lastUpdated: formatRelativeTime(topics[0].updatedAt)
       }
     };
   })(), fallback, "home", 1500);
@@ -429,7 +465,7 @@ export async function getMainFlowTopics() {
 
   return withFallback((async () => {
     const topics = await topicsWithReports(12);
-    return topics.length ? topics : followTopics;
+    return topics;
   })(), followTopics, "topics", 1800);
 }
 
@@ -483,7 +519,7 @@ export async function getMainFlowTopicDetail(id: string) {
 
       return {
         topic: mapTopic(topic, report?.id),
-        articles: articles.length ? articles : homeFeed
+        articles
       };
     }
   } catch (error) {
@@ -558,19 +594,23 @@ export async function getMainFlowInsightDetail(id: string, query?: { topic?: str
 
     if (report) {
       const metadata = parseMetadata(report.metadata);
-      const infoItems = metadata.keywordId
-        ? await prisma.infoItem.findMany({
-            where: { keywordId: metadata.keywordId },
-            orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-            take: 6,
-            include: { keyword: true }
-          })
-        : [];
+      const [infoItems, topic] = await Promise.all([
+        metadata.keywordId
+          ? prisma.infoItem.findMany({
+              where: { keywordId: metadata.keywordId },
+              orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+              take: 6,
+              include: { keyword: true }
+            })
+          : [],
+        metadata.topicId ? prisma.zoneTopic.findUnique({ where: { id: metadata.topicId }, select: { name: true } }) : null
+      ]);
       const related = infoItems.map(mapInfoItemToArticle);
+      const insight = mapReportToInsight(report, related.map((article) => article.id));
 
       return {
-        insight: mapReportToInsight(report, related.map((article) => article.id)),
-        related: related.length ? related : homeFeed
+        insight: topic ? { ...insight, topicTitle: topic.name } : insight,
+        related
       };
     }
   } catch (error) {
@@ -635,25 +675,17 @@ export async function getMainFlowSavedView() {
   }
 
   return withFallback((async () => {
-    const [items, reports] = await Promise.all([
-      prisma.infoItem.findMany({
-        orderBy: [{ createdAt: "desc" }],
-        take: 3,
-        include: { keyword: true }
-      }),
-      prisma.zoneReport.findMany({
+    const reports = await prisma.zoneReport.findMany({
         where: { favorite: { isNot: null } },
         orderBy: { createdAt: "desc" },
         take: 6,
         include: { zone: true }
-      })
-    ]);
-    const articles = items.map(mapInfoItemToArticle);
+      });
     const mappedInsights = reports.map((report) => mapReportToInsight(report));
 
     return {
-      articles: articles.length ? articles : savedArticles,
-      insights: mappedInsights.length ? mappedInsights : mockInsights.slice(0, 2)
+      articles: [],
+      insights: mappedInsights
     };
   })(), fallback, "saved", 1800);
 }

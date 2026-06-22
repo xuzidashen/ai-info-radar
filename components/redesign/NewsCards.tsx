@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   ArrowRight,
   BookmarkSimple,
-  Fire,
   FolderSimple,
   Newspaper,
   Plus,
@@ -39,7 +38,7 @@ export function HeroNewsCard({ article }: { article: RedesignArticle }) {
       <Link href={`/articles/${article.id}`} className="block">
         <div className="relative aspect-[1.7/1] min-h-48 overflow-hidden bg-[var(--app-surface-muted)] sm:aspect-[2.35/1] lg:min-h-64">
           <Image src={article.image} alt="未来城市与智能基础设施" fill priority className="object-cover transition-transform duration-500 hover:scale-[1.02]" sizes="(max-width: 768px) 100vw, 820px" />
-          <span className="absolute left-4 top-4 rounded-full bg-white px-3 py-1.5 text-xs font-black text-[#1d4ed8] shadow-sm">今日头条</span>
+          <span className="absolute left-4 top-4 rounded-full bg-white px-3 py-1.5 text-xs font-black text-[#1d4ed8] shadow-sm">主题重点</span>
         </div>
         <div className="p-5 sm:p-6">
           <h2 className="text-xl font-black leading-8 sm:text-2xl">{article.title}</h2>
@@ -61,7 +60,7 @@ export function BriefStats({
 }) {
   const statItems = [
     { label: "条资讯", value: stats.articleCount, icon: Newspaper, color: "text-[#2563eb] bg-[#e9f0ff]" },
-    { label: "个热点", value: stats.hotCount, icon: Fire, color: "text-[#e9543f] bg-[#fff0ed]" },
+    { label: "条重点", value: stats.hotCount, icon: Sparkle, color: "text-[#e9543f] bg-[#fff0ed]" },
     { label: "个主题", value: stats.topicCount, icon: FolderSimple, color: "text-[#0f9f6e] bg-[#e7f7f1]" }
   ];
 
@@ -113,7 +112,7 @@ export function HomeActions() {
   );
 }
 
-export function NewsListCard({ articles, title = "为你推荐" }: { articles: RedesignArticle[]; title?: string }) {
+export function NewsListCard({ articles, title = "关注动态" }: { articles: RedesignArticle[]; title?: string }) {
   return (
     <section className="app-card overflow-hidden">
       <div className="px-5 pb-2 pt-5">

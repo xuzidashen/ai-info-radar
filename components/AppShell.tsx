@@ -15,6 +15,7 @@ const productRoutes = [
   "/topics",
   "/insights",
   "/articles",
+  "/search",
   "/workspace",
   "/redesign"
 ];

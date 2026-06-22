@@ -2,57 +2,56 @@ import OpenAI from "openai";
 
 import { categoryLabels } from "@/lib/types";
 import type { GeneratedSummary, SummaryProvider, SummaryProviderInput } from "@/lib/providers/summary/types";
+import { parseStructuredSummary, serializeStructuredSummary } from "@/lib/utils/summaryParser";
 
-const sectionRules = {
-  finance: "【今日新增信息】\n【核心变化】\n【短期影响】\n【长期影响】\n【风险提示】\n【来源摘要】\n【免责声明】",
-  policy: "【事件背景】\n【政策要点】\n【申论可用角度】\n【官方表达】\n【可积累素材】\n【来源摘要】",
-  "ai-tech": "【最新更新】\n【功能变化】\n【对普通用户的影响】\n【对开发者的影响】\n【是否值得关注】\n【来源摘要】",
-  study: "【资料变化】\n【任务提醒】\n【可执行动作】\n【风险点】\n【下一步建议】",
-  custom: "【信息概览】\n【重要变化】\n【可能影响】\n【风险点】\n【下一步建议】\n【来源摘要】"
-};
+const MAX_SOURCES = 5;
+const MAX_SUMMARY_LENGTH = 700;
+const MAX_PROMPT_LENGTH = 12000;
+
+function truncate(value: string | null | undefined, limit: number) {
+  return (value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
 
 function formatDate(value: string | null | undefined) {
-  if (!value) {
-    return "未知";
-  }
-
+  if (!value) return "未知";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "未知" : date.toISOString();
 }
 
 function buildPrompt(input: SummaryProviderInput) {
-  const { keyword, infoItems } = input;
-  const sources = infoItems
-    .map(
-      (item, index) => `${index + 1}. 标题：${item.title}
-   来源：${item.source}
-   可信度：${item.credibilityLabel ?? "unknown"} (${item.credibilityScore ?? "未知"})，${item.credibilityReason ?? "无说明"}
-   发布时间：${formatDate(item.publishedAt)}
-   摘要：${item.summary}
-   URL：${item.url}`
-    )
-    .join("\n\n");
+  const sources = input.infoItems.slice(0, MAX_SOURCES).map((item, index) => ({
+    index: index + 1,
+    title: truncate(item.title, 180),
+    source: truncate(item.source, 120),
+    publishedAt: formatDate(item.publishedAt),
+    summary: truncate(item.summary, MAX_SUMMARY_LENGTH),
+    url: truncate(item.url, 800)
+  }));
+  const prompt = `请基于给定来源，为用户关注主题生成简洁中文情报摘要。
 
-  return `关键词：${keyword.name}
-分类：${categoryLabels[keyword.category]}
-搜索结果数量：${infoItems.length}
-用户备注：${keyword.description || "无"}
+主题：${truncate(input.keyword.name, 120)}
+分类：${categoryLabels[input.keyword.category]}
+用户备注：${truncate(input.keyword.description, 400) || "无"}
+来源数据：${JSON.stringify(sources)}
 
-搜索结果列表：
-${sources}
+只输出合法 JSON，不要输出 Markdown、代码块或额外解释。JSON 结构必须是：
+{
+  "overview": "不超过 80 个汉字的一句话总览",
+  "keyChanges": [{"title":"变化标题","detail":"1-2 句话说明","confidence":"high | medium | low"}],
+  "whyItMatters": ["为什么值得关注"],
+  "risks": ["风险或不确定性"],
+  "sourceNotes": [{"source":"来源名称","note":"该来源提供了什么信息","url":"来源 URL"}]
+}
 
-请基于上面的搜索结果生成中文结构化总结。
-必须使用以下小节，且小节标题必须原样保留：
-${sectionRules[keyword.category]}
+规则：
+1. 只使用给定来源，不编造事实、数字、来源或链接。
+2. keyChanges 最多 5 条，每条独立表达，不把来源编号混入正文。
+3. whyItMatters 最多 4 条，risks 最多 4 条，sourceNotes 最多 5 条。
+4. 信息不足时明确写“现有来源不足以判断”。
+5. 财经主题只做公开信息整理，risks 中必须包含“不构成投资建议”。
+6. sourceNotes 单独说明来源贡献，正文不要出现“来源4、来源6”等引用编号。`;
 
-要求：
-1. 只基于给定搜索结果总结。
-2. 不要编造没有出现的事实。
-3. 不要编造来源。
-4. 如果信息不足，要明确写“现有来源不足以判断”。
-5. 财经类不能给具体交易方向、价格预测或交易执行指令；最后必须写“以上内容仅为公开信息整理和辅助研究，不构成投资建议。”
-6. 输出中文结构化总结。
-7. 每个重要判断尽量对应来源标题。`;
+  return prompt.slice(0, MAX_PROMPT_LENGTH);
 }
 
 export class DeepSeekSummaryProvider implements SummaryProvider {
@@ -60,14 +59,13 @@ export class DeepSeekSummaryProvider implements SummaryProvider {
 
   async generate(input: SummaryProviderInput): Promise<GeneratedSummary> {
     const apiKey = process.env.DEEPSEEK_API_KEY;
-
-    if (!apiKey) {
-      throw new Error("DEEPSEEK_API_KEY is not configured");
-    }
+    if (!apiKey) throw new Error("DEEPSEEK_API_KEY is not configured");
 
     const client = new OpenAI({
       apiKey,
-      baseURL: "https://api.deepseek.com"
+      baseURL: "https://api.deepseek.com",
+      timeout: Number(process.env.DEEPSEEK_TIMEOUT_MS || 30000),
+      maxRetries: 1
     });
 
     const completion = await client.chat.completions.create({
@@ -75,25 +73,20 @@ export class DeepSeekSummaryProvider implements SummaryProvider {
       messages: [
         {
           role: "system",
-          content: "你是中文信息分析助手。你只基于用户提供的搜索结果总结，不输出投资买卖建议。"
+          content: "你是严谨的中文信息分析助手。输出必须是合法 JSON，只基于给定来源，不提供投资交易建议。"
         },
-        {
-          role: "user",
-          content: buildPrompt(input)
-        }
+        { role: "user", content: buildPrompt(input) }
       ],
-      temperature: 0.25
+      temperature: 0.15,
+      response_format: { type: "json_object" }
     });
 
     const content = completion.choices[0]?.message?.content?.trim();
-
-    if (!content) {
-      throw new Error("DeepSeek returned empty summary");
-    }
+    if (!content) throw new Error("DeepSeek returned empty summary");
 
     return {
       provider: this.name,
-      content
+      content: serializeStructuredSummary(parseStructuredSummary(content))
     };
   }
 }

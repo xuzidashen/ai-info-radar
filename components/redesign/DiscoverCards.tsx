@@ -1,16 +1,16 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Fire, TrendUp } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, FolderSimple, TrendUp } from "@phosphor-icons/react/dist/ssr";
 
 import type { FollowTopic, RedesignArticle } from "@/lib/mock/redesignData";
 import { SectionHeader } from "@/components/redesign/Navigation";
 
-export function RankingCard({ items }: { items: { rank: number; title: string; heat: string; articleId: string }[] }) {
+export function TopicSignalCard({ items }: { items: { rank: number; title: string; heat: string; articleId: string }[] }) {
   return (
     <section className="app-card p-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-black"><Fire size={20} weight="fill" className="text-[#ef5f4c]" />实时热榜</h2>
-        <span className="text-xs font-bold text-[var(--app-text-muted)]">每 5 分钟更新</span>
+        <h2 className="flex items-center gap-2 text-lg font-black"><FolderSimple size={20} weight="duotone" className="text-[var(--app-primary)]" />主题线索</h2>
+        <span className="text-xs font-bold text-[var(--app-text-muted)]">来自已关注内容</span>
       </div>
       <ol className="mt-4 space-y-1">
         {items.map((item) => (
@@ -23,7 +23,7 @@ export function RankingCard({ items }: { items: { rank: number; title: string; h
           </li>
         ))}
       </ol>
-      <Link href="/discover" className="mt-4 flex min-h-10 items-center justify-center border-t border-[var(--app-line)] pt-3 text-xs font-black text-[var(--app-primary)]">查看完整热榜</Link>
+      <Link href="/topics" className="mt-4 flex min-h-10 items-center justify-center border-t border-[var(--app-line)] pt-3 text-xs font-black text-[var(--app-primary)]">查看我的主题</Link>
     </section>
   );
 }
@@ -53,7 +53,7 @@ export function TopicGrid({ topics }: { topics: Array<FollowTopic & { image?: st
 export function GrowthList({ items }: { items: { article: RedesignArticle; growth: number }[] }) {
   return (
     <section className="app-card overflow-hidden">
-      <div className="p-5"><SectionHeader title="快速上升" /></div>
+      <div className="p-5"><SectionHeader title="近期更新" /></div>
       {items.map(({ article, growth }) => (
         <Link key={article.id} href={`/articles/${article.id}`} className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-3 border-t border-[var(--app-line)] p-4 hover:bg-[var(--app-surface-muted)] sm:grid-cols-[7rem_minmax(0,1fr)_auto]">
           <div className="relative aspect-[1.25/1] overflow-hidden rounded-lg">

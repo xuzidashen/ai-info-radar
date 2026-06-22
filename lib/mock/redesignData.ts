@@ -10,6 +10,8 @@ export type RedesignArticle = {
   score: number;
   body: string[];
   tags: string[];
+  topicId?: string;
+  topicTitle?: string;
 };
 
 export type FollowTopic = {
@@ -34,8 +36,12 @@ export type Insight = {
   generatedAt: string;
   summary: string;
   points: string[];
+  keyChanges?: Array<{ title: string; detail: string; confidence: "high" | "medium" | "low" }>;
+  whyItMatters?: string[];
+  risks?: string[];
+  sourceNotes?: Array<{ source: string; note: string; url?: string }>;
   tags: string[];
-  references: { title: string; source: string; url: string }[];
+  references: { title: string; source: string; url: string; note?: string }[];
   relatedArticleIds: string[];
 };
 
@@ -118,7 +124,7 @@ export const redesignArticles: RedesignArticle[] = [
     readTime: "6 分钟阅读",
     image: "/redesign-assets/dna-tech.webp",
     score: 8.7,
-    tags: ["生命科学", "科研", "快速上升"],
+    tags: ["生命科学", "科研", "近期更新"],
     body: [
       "基因编辑技术的实际应用不仅取决于编辑工具本身，也高度依赖安全、稳定的递送方式。",
       "本次公开进展提供了新的实验思路，但距离规模化应用仍有多项验证工作。"

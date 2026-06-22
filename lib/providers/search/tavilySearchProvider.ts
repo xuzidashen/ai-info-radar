@@ -59,24 +59,38 @@ export class TavilySearchProvider implements SearchProvider {
       throw new Error("TAVILY_API_KEY is not configured");
     }
 
-    const response = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        query: input.queryText || (input.description
-          ? `${input.keywordName} ${input.description}`
-          : input.keywordName),
-        topic: resolveTopic(input.category),
-        time_range: resolveTimeRange(input.category, input.timeRange),
-        max_results: input.maxResults ?? 8,
-        search_depth: "basic",
-        include_raw_content: false
-      }),
-      cache: "no-store"
-    });
+    const maxResults = Math.min(5, Math.max(1, input.maxResults ?? 5));
+    const timeoutMs = Number(process.env.TAVILY_TIMEOUT_MS || 12000);
+    let response: Response;
+
+    try {
+      response = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          query: input.queryText || (input.description
+            ? `${input.keywordName} ${input.description}`
+            : input.keywordName),
+          topic: resolveTopic(input.category),
+          time_range: resolveTimeRange(input.category, input.timeRange),
+          max_results: maxResults,
+          search_depth: "basic",
+          include_raw_content: false,
+          include_answer: false
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+        cache: "no-store"
+      });
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "";
+      if (name === "TimeoutError" || name === "AbortError") {
+        throw new Error(`Tavily 搜索超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`);
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       const message = await response.text().catch(() => "");

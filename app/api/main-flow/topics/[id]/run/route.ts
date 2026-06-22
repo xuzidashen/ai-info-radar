@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { canUseDatabase } from "@/lib/services/mainFlowService";
 import { runZoneTopic } from "@/lib/services/topicRunService";
+import { parseStructuredSummary } from "@/lib/utils/summaryParser";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,11 @@ function readInfoItemCount(result: MainFlowRunResult) {
   return Array.isArray(infoItems) ? infoItems.length : 0;
 }
 
+function readOverview(result: MainFlowRunResult) {
+  const content = "summary" in result ? result.summary?.content : null;
+  return content ? parseStructuredSummary(content).overview : "本次更新已完成，请查看完整分析结果。";
+}
+
 export async function POST(_request: Request, context: RouteContext) {
   const { id } = await context.params;
 
@@ -59,13 +65,15 @@ export async function POST(_request: Request, context: RouteContext) {
       localFallback: true,
       itemCount: 0,
       reportCount: 1,
+      candidateCount: 3,
+      overview: "当前为本地演示模式，已生成一份临时主题摘要。",
       provider: {
         searchProvider: "mock",
         summaryProvider: "mock",
         factorProvider: "mock",
         fallbackUsed: true
       },
-      stages: ["正在搜索最新信息", "正在筛选有效内容", "正在生成摘要", "正在生成分析结果", "已完成本次更新"]
+      stages: ["正在搜索最新信息", "找到候选内容", "正在筛选有效内容", "正在生成摘要", "正在保存结果", "已完成本次更新"]
     });
   }
 
@@ -83,6 +91,8 @@ export async function POST(_request: Request, context: RouteContext) {
       contentHref: `/topics/${id}`,
       itemCount,
       reportCount,
+      candidateCount: result.runLog.rawResultCount,
+      overview: readOverview(result),
       provider: {
         searchProvider: result.runLog.searchProvider,
         summaryProvider: result.runLog.summaryProvider,
@@ -90,7 +100,7 @@ export async function POST(_request: Request, context: RouteContext) {
         linkageProvider: result.runLog.linkageProvider,
         fallbackUsed: result.runLog.fallbackUsed
       },
-      stages: ["正在搜索最新信息", "正在筛选有效内容", "正在生成摘要", "正在生成分析结果", "已完成本次更新"]
+      stages: ["正在搜索最新信息", `找到 ${result.runLog.rawResultCount} 条候选内容`, "正在筛选有效内容", "正在生成摘要", "正在保存结果", "已完成本次更新"]
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "更新失败，请稍后再试。";

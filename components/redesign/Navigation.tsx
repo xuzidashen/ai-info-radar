@@ -47,17 +47,17 @@ export function SearchBar({ className = "", initialValue = "" }: { className?: s
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = query.trim();
-    router.push(value ? `/discover?q=${encodeURIComponent(value)}` : "/discover");
+    router.push(value ? `/search?q=${encodeURIComponent(value)}` : "/search");
   }
 
   return (
     <form onSubmit={submit} role="search" className={`flex min-h-12 items-center gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] px-4 shadow-[0_6px_18px_rgba(28,46,78,0.05)] focus-within:border-[var(--app-primary)] ${className}`}>
-      <MagnifyingGlass size={20} className="shrink-0 text-[var(--app-text-muted)]" />
+      <button type="submit" aria-label="提交搜索" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-primary)]"><MagnifyingGlass size={20} /></button>
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="搜索新闻、主题或来源"
-        aria-label="搜索新闻、主题或来源"
+        placeholder="搜索我的主题、内容或分析"
+        aria-label="搜索我的主题、内容或分析"
         className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[var(--app-text)] outline-none placeholder:text-[var(--app-text-muted)]"
       />
       {query ? (

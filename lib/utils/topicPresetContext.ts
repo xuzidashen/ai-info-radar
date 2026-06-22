@@ -194,14 +194,10 @@ export function buildTopicSearchContext(topic: {
       .map((template) => template.replaceAll("{keyword}", keywords[0] ?? topic.name)),
     8
   );
-  const queryText = unique([
-    topic.name,
-    topic.category,
-    topic.searchMode,
-    ...keywords,
-    ...presetNames,
-    ...queryTemplates
-  ], 24).join(" ");
+  const queryText = (
+    queryTemplates[0] ||
+    unique([topic.name, ...keywords.slice(1, 3), topic.category], 4).join(" ")
+  ).slice(0, 180);
   let readableDescription = topic.description ?? "";
   const start = readableDescription.indexOf(contextStart);
   const end = readableDescription.indexOf(contextEnd);

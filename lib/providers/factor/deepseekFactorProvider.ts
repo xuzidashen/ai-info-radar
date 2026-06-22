@@ -126,7 +126,9 @@ export class DeepSeekFactorProvider implements FactorProvider {
 
     const client = new OpenAI({
       apiKey,
-      baseURL: "https://api.deepseek.com"
+      baseURL: "https://api.deepseek.com",
+      timeout: Number(process.env.DEEPSEEK_TIMEOUT_MS || 30000),
+      maxRetries: 1
     });
 
     const completion = await client.chat.completions.create({
