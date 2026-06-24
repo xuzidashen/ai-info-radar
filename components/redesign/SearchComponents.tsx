@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { SearchBar } from "@/components/redesign/Navigation";
 import { SummaryRenderer } from "@/components/redesign/SummaryRenderer";
+import { recordUsage } from "@/components/redesign/UsageComponents";
 import type { AppSearchResults } from "@/lib/services/appSearchService";
 import type { StructuredSummary } from "@/lib/utils/summaryParser";
 
@@ -56,6 +57,7 @@ export function SearchExperience({ results }: { results: AppSearchResults }) {
       }
       setWebResults(data.results ?? []);
       window.localStorage.setItem(localKey, String(Date.now()));
+      recordUsage("tavily");
       setCooldown(45);
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "全网搜索失败，请稍后重试。");
@@ -74,6 +76,23 @@ export function SearchExperience({ results }: { results: AppSearchResults }) {
     setSavedUrls((current) => current.includes(result.url) ? current : [...current, result.url]);
   }
 
+  async function summarizeOneResult(result: WebResult) {
+    if (summaryLoading) return;
+    setSummaryLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/search/web/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: result.title || query, results: [result] }) });
+      const data = await response.json().catch(() => ({})) as { summary?: StructuredSummary; error?: string };
+      if (!response.ok || !data.summary) throw new Error(data.error || "生成摘要失败");
+      recordUsage("deepseek");
+      setWebSummary(data.summary);
+    } catch (summaryError) {
+      setError(summaryError instanceof Error ? summaryError.message : "生成摘要失败");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
   async function summarizeWebResults() {
     if (!webResults.length || summaryLoading) return;
     setSummaryLoading(true);
@@ -82,6 +101,7 @@ export function SearchExperience({ results }: { results: AppSearchResults }) {
       const response = await fetch("/api/search/web/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query, results: webResults }) });
       const data = await response.json().catch(() => ({})) as { summary?: StructuredSummary; error?: string };
       if (!response.ok || !data.summary) throw new Error(data.error || "生成摘要失败");
+      recordUsage("deepseek");
       setWebSummary(data.summary);
     } catch (summaryError) {
       setError(summaryError instanceof Error ? summaryError.message : "生成摘要失败");
@@ -109,7 +129,35 @@ export function SearchExperience({ results }: { results: AppSearchResults }) {
 
       {query ? <section className="rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 text-lg font-black"><Globe size={20} />搜索全网</h2><p className="mt-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">全网搜索会消耗 Tavily 额度。仅点击按钮后调用，最多返回 5 条，同词 45 秒冷却。</p></div><button type="button" onClick={searchWeb} disabled={loading || cooldown > 0} className="app-button shrink-0 disabled:cursor-wait disabled:opacity-60"><Globe size={17} />{loading ? "搜索中" : cooldown ? `${cooldown} 秒后可重试` : "搜索全网"}</button></div>{error ? <p className="mt-3 text-sm font-bold text-[#c24131]">{error}</p> : null}</section> : null}
 
-      {webResults.length ? <section><div className="flex flex-wrap items-center justify-between gap-3"><GroupTitle icon={Globe} title="全网结果" count={webResults.length} /><div className="flex flex-wrap gap-2"><button type="button" onClick={summarizeWebResults} disabled={summaryLoading} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><Sparkle size={16} />{summaryLoading ? "生成中" : "基于结果生成摘要"}</button><Link href={`/topics/new?title=${encodeURIComponent(query)}&keywords=${encodeURIComponent(query)}`} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><FolderSimple size={16} />创建关注主题</Link></div></div><div className="mt-3 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">{webResults.map((result) => <article key={result.url} className="py-4"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><a href={result.url} target="_blank" rel="noreferrer" className="font-black leading-6 hover:text-[var(--app-primary)]">{result.title} <ArrowSquareOut size={14} className="inline" /></a><p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{result.content || "暂无摘要"}</p><p className="mt-2 text-xs font-bold text-[var(--app-text-muted)]">{result.source}</p></div><button type="button" onClick={() => saveResult(result)} disabled={savedUrls.includes(result.url)} className="app-button-secondary min-h-9 shrink-0 px-2.5 py-1.5 text-xs"><BookmarkSimple size={15} weight={savedUrls.includes(result.url) ? "fill" : "regular"} />{savedUrls.includes(result.url) ? "已保存" : "保存"}</button></div></article>)}</div></section> : null}
+      {webResults.length ? (
+        <section>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <GroupTitle icon={Globe} title="全网结果" count={webResults.length} />
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={summarizeWebResults} disabled={summaryLoading} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><Sparkle size={16} />{summaryLoading ? "生成中" : "基于结果生成摘要"}</button>
+              <Link href={`/topics/new?title=${encodeURIComponent(query)}&keywords=${encodeURIComponent(query)}`} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><FolderSimple size={16} />创建关注主题</Link>
+            </div>
+          </div>
+          <div className="mt-3 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">
+            {webResults.map((result) => (
+              <article key={result.url} className="py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="min-w-0 flex-1">
+                    <a href={result.url} target="_blank" rel="noreferrer" className="font-black leading-6 hover:text-[var(--app-primary)]">{result.title} <ArrowSquareOut size={14} className="inline" /></a>
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{result.content || "暂无摘要"}</p>
+                    <p className="mt-2 text-xs font-bold text-[var(--app-text-muted)]">{result.source}{result.publishedAt ? ` · ${new Date(result.publishedAt).toLocaleDateString("zh-CN")}` : ""}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button type="button" onClick={() => saveResult(result)} disabled={savedUrls.includes(result.url)} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><BookmarkSimple size={15} weight={savedUrls.includes(result.url) ? "fill" : "regular"} />{savedUrls.includes(result.url) ? "已保存" : "保存"}</button>
+                    <Link href={`/topics/new?title=${encodeURIComponent(query)}&keywords=${encodeURIComponent([query, result.title].join("，"))}`} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><FolderSimple size={15} />加入主题</Link>
+                    <button type="button" onClick={() => summarizeOneResult(result)} disabled={summaryLoading} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><Sparkle size={15} />摘要</button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {webSummary ? <section className="border-t border-[var(--app-line)] pt-7"><SummaryRenderer summary={webSummary} /></section> : null}
     </div>

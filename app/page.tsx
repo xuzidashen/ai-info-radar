@@ -1,4 +1,5 @@
 import { AttentionOverview, FocusActions, FollowedTopics, RecentInsights, TopicActivity } from "@/components/redesign/FocusHome";
+import { UnreadOverview } from "@/components/redesign/ReadState";
 import { TopNav } from "@/components/redesign/Navigation";
 import { RedesignShell } from "@/components/redesign/RedesignShell";
 import { getMainFlowHomeView } from "@/lib/services/mainFlowService";
@@ -13,6 +14,7 @@ export default async function HomePage() {
       <div className="space-y-8">
         <TopNav subtitle="只追踪你真正关注的信息" />
         <AttentionOverview stats={stats} />
+        <UnreadOverview articleIds={articles.map((article) => article.id)} insightIds={insights.map((insight) => insight.id)} />
         <FocusActions />
         <FollowedTopics topics={topics} />
         {topics.length ? <TopicActivity articles={articles} /> : null}

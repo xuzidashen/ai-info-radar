@@ -33,6 +33,14 @@ function classifyRunError(message: string) {
     return "ai_failed";
   }
 
+  if (message.includes("数据库") || message.includes("保存") || message.includes("Prisma")) {
+    return "database_failed";
+  }
+
+  if (message.includes("频繁") || message.includes("rate") || message.includes("429")) {
+    return "too_frequent";
+  }
+
   return "run_failed";
 }
 
@@ -73,7 +81,7 @@ export async function POST(_request: Request, context: RouteContext) {
         factorProvider: "mock",
         fallbackUsed: true
       },
-      stages: ["正在搜索最新信息", "找到候选内容", "正在筛选有效内容", "正在生成摘要", "正在保存结果", "已完成本次更新"]
+      stages: ["正在搜索最新信息", "找到候选内容", "正在筛选有效内容", "正在生成精简摘要", "正在保存分析结果", "已完成本次更新"]
     });
   }
 
@@ -100,7 +108,7 @@ export async function POST(_request: Request, context: RouteContext) {
         linkageProvider: result.runLog.linkageProvider,
         fallbackUsed: result.runLog.fallbackUsed
       },
-      stages: ["正在搜索最新信息", `找到 ${result.runLog.rawResultCount} 条候选内容`, "正在筛选有效内容", "正在生成摘要", "正在保存结果", "已完成本次更新"]
+      stages: ["正在搜索最新信息", `找到 ${result.runLog.rawResultCount} 条候选内容`, "正在筛选有效内容", "正在生成精简摘要", "正在保存分析结果", "已完成本次更新"]
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "更新失败，请稍后再试。";

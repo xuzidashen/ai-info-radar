@@ -28,6 +28,7 @@ function cleanText(value: unknown, limit = 500) {
   if (typeof value !== "string") return "";
   return value
     .replace(/```(?:json|markdown)?/gi, "")
+    .replace(/^\s*(好的[，,。]?这是|以下是|当然[，,。]?)/, "")
     .replace(/^[#>*\-\s]+/gm, "")
     .replace(/\*\*/g, "")
     .replace(/`/g, "")
@@ -36,7 +37,7 @@ function cleanText(value: unknown, limit = 500) {
     .slice(0, limit);
 }
 
-function stringList(value: unknown, limit = 6) {
+function stringList(value: unknown, limit = 3) {
   if (!Array.isArray(value)) return [];
   return value.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, limit);
 }
@@ -62,7 +63,7 @@ function normalize(value: unknown): StructuredSummary | null {
           detail,
           confidence: confidence(item.confidence)
         }];
-      }).slice(0, 6)
+      }).slice(0, 3)
     : [];
 
   const sourceNotes = Array.isArray(input.sourceNotes)
@@ -74,14 +75,14 @@ function normalize(value: unknown): StructuredSummary | null {
         if (!source || !note) return [];
         const url = typeof item.url === "string" && /^https?:\/\//.test(item.url) ? item.url.slice(0, 1000) : undefined;
         return [{ source, note, url }];
-      }).slice(0, 8)
+      }).slice(0, 5)
     : [];
 
   return {
-    overview,
+    overview: overview.slice(0, 80),
     keyChanges,
-    whyItMatters: stringList(input.whyItMatters),
-    risks: stringList(input.risks),
+    whyItMatters: stringList(input.whyItMatters, 3),
+    risks: stringList(input.risks, 3),
     sourceNotes
   };
 }
@@ -109,14 +110,14 @@ function legacySummary(content: string): StructuredSummary {
   const sentences = plain.split(/[。！？\n]+/).map((item) => cleanText(item, 260)).filter((item) => item.length > 8);
 
   return {
-    overview: (overviewSection?.body || sentences[0] || emptySummary.overview).slice(0, 180),
+    overview: (overviewSection?.body || sentences[0] || emptySummary.overview).slice(0, 80),
     keyChanges: (changeSections.length ? changeSections : sentences.slice(1, 4).map((body, index) => ({ title: `重要变化 ${index + 1}`, body })))
-      .slice(0, 5)
+      .slice(0, 3)
       .map((item, index) => ({ title: item.title || `重要变化 ${index + 1}`, detail: item.body, confidence: "medium" as const })),
-    whyItMatters: whySections.map((item) => item.body).slice(0, 5),
+    whyItMatters: whySections.map((item) => item.body).slice(0, 3),
     risks: riskSection ? [riskSection.body] : emptySummary.risks,
     sourceNotes: sourceSection
-      ? sourceSection.body.split(/\s*(?:\d+[.、]|[-•])\s*/).map((note) => cleanText(note, 260)).filter(Boolean).slice(0, 6).map((note, index) => ({ source: `来源 ${index + 1}`, note }))
+      ? sourceSection.body.split(/\s*(?:\d+[.、]|[-•])\s*/).map((note) => cleanText(note, 260)).filter(Boolean).slice(0, 5).map((note, index) => ({ source: `来源 ${index + 1}`, note }))
       : []
   };
 }

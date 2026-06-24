@@ -3,6 +3,7 @@ import Link from "next/link";
 import { FolderSimple, MagnifyingGlass, Sparkle } from "@phosphor-icons/react/dist/ssr";
 
 import { ArticleBody, ArticleHeader, RelatedArticles } from "@/components/redesign/ArticleComponents";
+import { ReadTracker } from "@/components/redesign/ReadState";
 import { RedesignShell } from "@/components/redesign/RedesignShell";
 import { getMainFlowArticleDetail } from "@/lib/services/mainFlowService";
 
@@ -30,6 +31,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
         </aside>
       }
     >
+      <ReadTracker kind="article" id={article.id} />
       <ArticleHeader article={article} />
       <ArticleBody article={article} />
       <RelatedArticles articles={related} />

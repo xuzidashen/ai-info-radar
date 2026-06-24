@@ -9,8 +9,12 @@ import {
   SettingList
 } from "@/components/redesign/ProfileComponents";
 import { RedesignShell } from "@/components/redesign/RedesignShell";
+import { UsageReminder } from "@/components/redesign/UsageComponents";
+import { getMainFlowTopics } from "@/lib/services/mainFlowService";
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+  const topics = await getMainFlowTopics();
+
   return (
     <RedesignShell aside={<div className="sticky top-7"><ProfileIntro /></div>}>
       <div className="space-y-6">
@@ -19,6 +23,7 @@ export default function ProfilePage() {
         <QuickActions />
         <ManagementEntry />
         <PreferencePanel />
+        <UsageReminder topics={topics} />
         <SettingList />
         <AdvancedToolsEntry />
       </div>

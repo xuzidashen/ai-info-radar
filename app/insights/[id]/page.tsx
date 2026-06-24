@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { InsightArticle } from "@/components/redesign/InsightComponents";
+import { ReadTracker } from "@/components/redesign/ReadState";
 import { RedesignShell } from "@/components/redesign/RedesignShell";
 import { getMainFlowInsightDetail } from "@/lib/services/mainFlowService";
 
@@ -12,5 +13,5 @@ export default async function InsightPage({ params, searchParams }: { params: Pr
   const detail = await getMainFlowInsightDetail(id, query);
   if (!detail) notFound();
   const { insight, related } = detail;
-  return <RedesignShell showBottomNav={false}><InsightArticle insight={insight} related={related} /></RedesignShell>;
+  return <RedesignShell showBottomNav={false}><ReadTracker kind="insight" id={insight.id} /><InsightArticle insight={insight} related={related} /></RedesignShell>;
 }

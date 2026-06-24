@@ -18,15 +18,28 @@ import {
 } from "@phosphor-icons/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { UnreadBadge, useReadState } from "@/components/redesign/ReadState";
+import { getTopicCooldown, markTopicRun, recordUsage } from "@/components/redesign/UsageComponents";
 import { useToast } from "@/components/ui/Toast";
 import type { FollowTopic, RedesignArticle } from "@/lib/mock/redesignData";
 
 const STORAGE_KEY = "ai-radar-custom-topics";
-const directions = ["新闻动态", "政策变化", "公司进展", "学习资料"];
+const directions = ["新闻动态", "政策变化", "公司进展", "学习资料", "技术文章"];
+const preferenceMarker = "[[RADAR_TOPIC_PREFS]]";
+const contentDirections = ["新闻", "政策", "公司", "学习资料", "技术文章"];
+const topicRunCooldownSeconds = 180;
 
 type StoredTopic = FollowTopic & { createdAt: string };
 type ConfirmAction = { type: "delete" | "archive" | "bulk-delete" | "bulk-archive"; topic?: FollowTopic };
 type RunStatus = "idle" | "searching" | "filtering" | "summarizing" | "reporting" | "saving" | "done" | "empty" | "error";
+type TopicPreferences = {
+  excludeWords: string[];
+  contentDirections: string[];
+  depth: "简短" | "标准" | "深度";
+  searchScope: "只搜索已有内容" | "允许全网搜索";
+  autoSummary: boolean;
+};
+
 type RunTopicResponse = {
   message?: string;
   insightHref?: string;
@@ -74,6 +87,49 @@ function splitKeywords(value: string) {
   return value.split(/[，,\s]+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
 }
 
+function defaultTopicPreferences(): TopicPreferences {
+  return {
+    excludeWords: [],
+    contentDirections: ["新闻"],
+    depth: "标准",
+    searchScope: "允许全网搜索",
+    autoSummary: true
+  };
+}
+
+function parseDescriptionWithPreferences(value: string) {
+  const index = value.indexOf(preferenceMarker);
+  if (index < 0) return { description: value, preferences: defaultTopicPreferences() };
+
+  const description = value.slice(0, index).trim();
+  const raw = value.slice(index + preferenceMarker.length).trim();
+  try {
+    const parsed = JSON.parse(raw) as Partial<TopicPreferences>;
+    const defaults = defaultTopicPreferences();
+    return {
+      description,
+      preferences: {
+        excludeWords: Array.isArray(parsed.excludeWords) ? parsed.excludeWords.filter((item): item is string => typeof item === "string") : defaults.excludeWords,
+        contentDirections: Array.isArray(parsed.contentDirections) && parsed.contentDirections.length ? parsed.contentDirections.filter((item): item is string => typeof item === "string") : defaults.contentDirections,
+        depth: parsed.depth === "简短" || parsed.depth === "深度" ? parsed.depth : defaults.depth,
+        searchScope: parsed.searchScope === "只搜索已有内容" ? parsed.searchScope : defaults.searchScope,
+        autoSummary: typeof parsed.autoSummary === "boolean" ? parsed.autoSummary : defaults.autoSummary
+      }
+    };
+  } catch {
+    return { description, preferences: defaultTopicPreferences() };
+  }
+}
+
+function buildDescriptionWithPreferences(description: string, preferences: TopicPreferences) {
+  return [description.trim(), preferenceMarker, JSON.stringify(preferences)].filter(Boolean).join("\n");
+}
+
+function topicDisplayDescription(topic: FollowTopic) {
+  const parsed = parseDescriptionWithPreferences(topic.description);
+  return parsed.description || `持续整理与“${topic.title}”有关的重要变化。`;
+}
+
 function isRunningStatus(status: RunStatus) {
   return status === "searching" || status === "filtering" || status === "summarizing" || status === "reporting" || status === "saving";
 }
@@ -81,9 +137,9 @@ function isRunningStatus(status: RunStatus) {
 function runStatusText(status: RunStatus, idleText: string, doneText: string, errorText?: string) {
   if (status === "searching") return "正在搜索最新信息";
   if (status === "filtering") return "正在筛选有效内容";
-  if (status === "summarizing") return "正在生成摘要";
+  if (status === "summarizing") return "正在生成精简摘要";
   if (status === "reporting") return "正在生成分析结果";
-  if (status === "saving") return "正在保存结果";
+  if (status === "saving") return "正在保存分析结果";
   if (status === "done") return doneText;
   if (status === "empty") return "未找到足够内容，可调整关键词后重试。";
   if (status === "error") return errorText ? `更新失败：${errorText}` : "更新失败，请稍后再试。";
@@ -93,8 +149,10 @@ function runStatusText(status: RunStatus, idleText: string, doneText: string, er
 function runErrorMessage(data: RunTopicResponse) {
   if (data.reason === "missing_tavily_key") return data.error || "缺少 TAVILY_API_KEY，请在 Vercel 环境变量中配置。";
   if (data.reason === "missing_deepseek_key") return data.error || "缺少 DEEPSEEK_API_KEY，请在 Vercel 环境变量中配置。";
-  if (data.reason === "search_failed") return data.error || "搜索失败，请检查 Tavily 配置或稍后重试。";
+  if (data.reason === "search_failed") return data.error || "搜索服务失败，请检查 Tavily 配置或稍后重试。";
   if (data.reason === "ai_failed") return data.error || "AI 总结失败，请检查 DeepSeek 配置或稍后重试。";
+  if (data.reason === "database_failed") return data.error || "数据库保存失败，请稍后重试。";
+  if (data.reason === "too_frequent") return data.error || "调用过于频繁，请稍后再试。";
   return data.error || "更新失败，请稍后再试。";
 }
 
@@ -156,9 +214,30 @@ function TopicRow({
   const [status, setStatus] = useState<RunStatus>("idle");
   const [resultHref, setResultHref] = useState(initialInsightHref);
   const [errorMessage, setErrorMessage] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    const sync = () => setCooldown(getTopicCooldown(topic.id));
+    sync();
+    const timer = window.setInterval(sync, 1000);
+    window.addEventListener("ai-radar-usage-change", sync);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("ai-radar-usage-change", sync);
+    };
+  }, [topic.id]);
 
   async function updateNow() {
     if (isRunningStatus(status)) return;
+    const remaining = getTopicCooldown(topic.id);
+    if (remaining > 0) {
+      setCooldown(remaining);
+      setErrorMessage(`刚刚更新过，约 ${remaining} 秒后可再次更新。`);
+      setStatus("error");
+      return;
+    }
+    markTopicRun(topic.id);
+    setCooldown(topicRunCooldownSeconds);
     setStatus("searching");
     setErrorMessage("");
     window.setTimeout(() => setStatus((current) => (current === "searching" ? "filtering" : current)), 500);
@@ -171,6 +250,8 @@ function TopicRow({
       if (!response.ok) throw new Error(runErrorMessage(data));
 
       setResultHref(data.localFallback ? initialInsightHref : data.insightHref ?? resultHref);
+      if (data.provider?.searchProvider === "tavily") recordUsage("tavily");
+      if (data.provider?.summaryProvider === "deepseek") recordUsage("deepseek");
       setStatus("done");
     } catch (error) {
       const message = error instanceof Error ? error.message : "更新失败，请稍后再试。";
@@ -197,11 +278,12 @@ function TopicRow({
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-black">{topic.title}</h2>
               <span className="app-chip">{topic.category}</span>
+              {topic.resultCount > 0 ? <span className="app-chip text-[#e9543f]">新增 {topic.resultCount} 条</span> : null}
             </div>
-            <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{topic.description}</p>
+            <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{topicDisplayDescription(topic)}</p>
             <div className="mt-3 flex flex-wrap gap-2">{topic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}</div>
             <p className="mt-3 text-xs font-bold text-[var(--app-text-muted)]">
-              {runStatusText(status, `最近更新 ${topic.updatedAt} · ${topic.resultCount} 条结果`, "已完成本次更新，已生成分析结果", errorMessage)}
+              {cooldown > 0 && status !== "done" && !isRunningStatus(status) ? `刚刚更新过，${cooldown} 秒后可再次更新` : runStatusText(status, `最近更新 ${topic.updatedAt} · ${topic.resultCount} 条结果`, "已完成本次更新，已生成分析结果", errorMessage)}
             </p>
           </div>
         </div>
@@ -210,7 +292,7 @@ function TopicRow({
       <div className="mt-4 flex flex-wrap gap-2">
         {!management ? (
           <>
-            <button type="button" onClick={updateNow} disabled={isRunningStatus(status)} className="app-button-secondary min-h-10 px-3 py-2 text-xs disabled:cursor-wait disabled:opacity-70"><Lightning size={16} weight="fill" />{isRunningStatus(status) ? "正在更新" : status === "error" ? "重试更新" : "立即更新"}</button>
+            <button type="button" onClick={updateNow} disabled={isRunningStatus(status) || cooldown > 0} className="app-button-secondary min-h-10 px-3 py-2 text-xs disabled:cursor-wait disabled:opacity-70"><Lightning size={16} weight="fill" />{isRunningStatus(status) ? "正在更新" : cooldown > 0 ? `${cooldown} 秒后更新` : status === "error" ? "重试更新" : "立即更新"}</button>
             <Link href={resultHref} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><Sparkle size={16} />查看分析</Link>
           </>
         ) : (
@@ -502,9 +584,15 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
   const router = useRouter();
   const { showToast } = useToast();
   const [title, setTitle] = useState(topic.title);
-  const [description, setDescription] = useState(topic.description);
+  const parsedTopic = parseDescriptionWithPreferences(topic.description);
+  const [description, setDescription] = useState(parsedTopic.description);
   const [category, setCategory] = useState(topic.category);
   const [keywords, setKeywords] = useState(topic.keywords.join("，"));
+  const [excludeWords, setExcludeWords] = useState(parsedTopic.preferences.excludeWords.join("，"));
+  const [selectedDirections, setSelectedDirections] = useState<string[]>(parsedTopic.preferences.contentDirections);
+  const [depth, setDepth] = useState<TopicPreferences["depth"]>(parsedTopic.preferences.depth);
+  const [searchScope, setSearchScope] = useState<TopicPreferences["searchScope"]>(parsedTopic.preferences.searchScope);
+  const [autoSummary, setAutoSummary] = useState(parsedTopic.preferences.autoSummary);
   const [saving, setSaving] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -513,7 +601,14 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
     setSaving(true);
 
     try {
-      const input = { title: title.trim(), description: description.trim(), category, keywords: splitKeywords(keywords) };
+      const preferences: TopicPreferences = {
+        excludeWords: splitKeywords(excludeWords),
+        contentDirections: selectedDirections.length ? selectedDirections : [category],
+        depth,
+        searchScope,
+        autoSummary
+      };
+      const input = { title: title.trim(), description: buildDescriptionWithPreferences(description.trim(), preferences), category, keywords: splitKeywords(keywords) };
       if (topic.id.startsWith("custom-")) {
         saveStoredTopic({ ...topic, ...input, updatedAt: "刚刚保存", createdAt: new Date().toISOString() });
       } else {
@@ -552,6 +647,36 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
         </select>
         <label className="mt-5 block text-sm font-black" htmlFor="edit-topic-keywords">关键词</label>
         <input id="edit-topic-keywords" value={keywords} onChange={(event) => setKeywords(event.target.value)} className="app-input mt-2" />
+        <label className="mt-5 block text-sm font-black" htmlFor="edit-topic-exclude">排除词</label>
+        <input id="edit-topic-exclude" value={excludeWords} onChange={(event) => setExcludeWords(event.target.value)} placeholder="用逗号分隔，例如：广告，旧闻" className="app-input mt-2" />
+        <div className="mt-6">
+          <p className="text-sm font-black">内容方向</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {contentDirections.map((item) => {
+              const selected = selectedDirections.includes(item);
+              return <button key={item} type="button" onClick={() => setSelectedDirections((current) => selected ? current.filter((value) => value !== item) : [...current, item])} className={`min-h-11 rounded-lg border px-3 text-sm font-black ${selected ? "border-[var(--app-primary)] bg-[var(--app-primary-soft)] text-[var(--app-primary)]" : "border-[var(--app-line)] bg-[var(--app-surface)] text-[var(--app-text)]"}`}>{item}</button>;
+            })}
+          </div>
+        </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-black" htmlFor="edit-topic-depth">内容深度
+            <select id="edit-topic-depth" value={depth} onChange={(event) => setDepth(event.target.value as TopicPreferences["depth"])} className="app-input mt-2">
+              <option value="简短">简短</option>
+              <option value="标准">标准</option>
+              <option value="深度">深度</option>
+            </select>
+          </label>
+          <label className="block text-sm font-black" htmlFor="edit-topic-scope">搜索范围
+            <select id="edit-topic-scope" value={searchScope} onChange={(event) => setSearchScope(event.target.value as TopicPreferences["searchScope"])} className="app-input mt-2">
+              <option value="只搜索已有内容">只搜索已有内容</option>
+              <option value="允许全网搜索">允许全网搜索</option>
+            </select>
+          </label>
+        </div>
+        <label className="mt-5 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface-muted)] px-4 text-sm font-black">
+          <span>自动总结</span>
+          <input type="checkbox" checked={autoSummary} onChange={(event) => setAutoSummary(event.target.checked)} className="h-5 w-5 accent-[#2563eb]" />
+        </label>
         <div className="mt-8 flex flex-col gap-2 border-t border-[var(--app-line)] pt-5 sm:flex-row sm:justify-end">
           <Link href={`/topics/${topic.id}`} className="app-button-secondary justify-center">取消</Link>
           <button type="submit" disabled={saving || !title.trim()} className="app-button justify-center disabled:opacity-60">{saving ? "保存中" : "保存修改"}</button>
@@ -567,6 +692,7 @@ export function TopicEditClient({ id, topic }: { id: string; topic: FollowTopic 
   useEffect(() => {
     if (!topic) setResolvedTopic(readStoredTopics().find((item) => item.id === id) ?? null);
   }, [id, topic]);
+
 
   if (!resolvedTopic) {
     return <section className="app-card p-8 text-center"><h1 className="text-xl font-black">这个主题已被删除或归档</h1><p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">它不会再出现在我的关注中。</p><Link href="/topics" className="app-button mt-5">返回我的关注</Link></section>;
@@ -588,21 +714,48 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const articleReadState = useReadState("article", articles.map((article) => article.id));
 
   useEffect(() => {
     if (!topic) setResolvedTopic(readStoredTopics().find((item) => item.id === id) ?? null);
   }, [id, topic]);
+
+  useEffect(() => {
+    if (!resolvedTopic) return;
+    const sync = () => setCooldown(getTopicCooldown(resolvedTopic.id));
+    sync();
+    const timer = window.setInterval(sync, 1000);
+    window.addEventListener("ai-radar-usage-change", sync);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("ai-radar-usage-change", sync);
+    };
+  }, [resolvedTopic]);
 
   if (!resolvedTopic) {
     return <section className="app-card p-8 text-center"><h1 className="text-xl font-black">这个主题已被删除或归档</h1><p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">它不会再出现在我的关注中。相关内容和分析结果会按当前数据策略保留。</p><Link href="/topics" className="app-button mt-5">返回我的关注</Link></section>;
   }
 
   const insightHref = insightHrefFor(resolvedTopic);
+  const parsedDescription = parseDescriptionWithPreferences(resolvedTopic.description);
+  const visibleArticles = onlyUnread ? articles.filter((article) => articleReadState.isUnread(article.id)) : articles;
 
   async function updateNow() {
     if (isRunningStatus(status)) return;
     const currentTopic = resolvedTopic;
     if (!currentTopic) return;
+
+    const remaining = getTopicCooldown(currentTopic.id);
+    if (remaining > 0) {
+      setCooldown(remaining);
+      setErrorMessage(`刚刚更新过，约 ${remaining} 秒后可再次更新。`);
+      setStatus("error");
+      return;
+    }
+    markTopicRun(currentTopic.id);
+    setCooldown(topicRunCooldownSeconds);
 
     setStatus("searching");
     setRunMessage("");
@@ -621,6 +774,8 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
       setResultHref(data.localFallback ? insightHref : data.insightHref ?? insightHref);
       setContentHref(data.contentHref ?? `/topics/${currentTopic.id}`);
       setRunMessage(data.message || "已完成本次更新");
+      if (data.provider?.searchProvider === "tavily") recordUsage("tavily");
+      if (data.provider?.summaryProvider === "deepseek") recordUsage("deepseek");
       setRunResult({
         itemCount: data.itemCount ?? 0,
         reportCount: data.reportCount ?? 0,
@@ -671,9 +826,9 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
       <Link href="/topics" className="inline-flex items-center gap-2 text-sm font-black text-[var(--app-text-muted)] hover:text-[var(--app-primary)]"><ArrowLeft size={17} />返回我的关注</Link>
       <header className="mt-6 border-b border-[var(--app-line)] pb-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0"><span className="app-chip text-[var(--app-primary)]">{resolvedTopic.category}</span><h1 className="mt-3 text-3xl font-black leading-tight">{resolvedTopic.title}</h1><p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-[var(--app-text-muted)]">{resolvedTopic.description}</p><div className="mt-4 flex flex-wrap gap-2">{resolvedTopic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}</div></div>
+          <div className="min-w-0"><span className="app-chip text-[var(--app-primary)]">{resolvedTopic.category}</span><h1 className="mt-3 text-3xl font-black leading-tight">{resolvedTopic.title}</h1><p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-[var(--app-text-muted)]">{parsedDescription.description}</p><div className="mt-4 flex flex-wrap gap-2">{resolvedTopic.keywords.map((keyword) => <span key={keyword} className="app-chip">{keyword}</span>)}{articleReadState.unreadCount ? <span className="app-chip text-[#e9543f]">新增 {articleReadState.unreadCount} 条</span> : null}</div></div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <button type="button" onClick={updateNow} disabled={isRunningStatus(status)} className="app-button disabled:cursor-wait disabled:opacity-70"><Lightning size={18} weight="fill" />{isRunningStatus(status) ? "正在更新" : status === "error" ? "重试更新" : "立即更新"}</button>
+            <button type="button" onClick={updateNow} disabled={isRunningStatus(status) || cooldown > 0} className="app-button disabled:cursor-wait disabled:opacity-70"><Lightning size={18} weight="fill" />{isRunningStatus(status) ? "正在更新" : cooldown > 0 ? `${cooldown} 秒后更新` : status === "error" ? "重试更新" : "立即更新"}</button>
             <div className="relative">
               <button type="button" onClick={() => setMoreOpen((current) => !current)} className="app-button-secondary"><DotsThree size={18} weight="bold" />更多</button>
               {moreOpen ? (
@@ -688,7 +843,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
           </div>
         </div>
         <p className={`mt-5 text-sm font-bold ${status === "done" ? "text-[var(--app-positive)]" : status === "error" || status === "empty" ? "text-[#e9543f]" : "text-[var(--app-text-muted)]"}`}>
-          {runStatusText(status, `最近更新 ${resolvedTopic.updatedAt}`, runMessage || "已完成本次更新", errorMessage)}
+          {cooldown > 0 && status !== "done" && !isRunningStatus(status) ? `刚刚更新过，${cooldown} 秒后可再次更新` : runStatusText(status, `最近更新 ${resolvedTopic.updatedAt}`, runMessage || "已完成本次更新", errorMessage)}
         </p>
         {status === "done" && runResult ? <section className="mt-4 rounded-lg border border-[#b8ddcf] bg-[#eefaf5] p-4"><div className="flex flex-wrap gap-2 text-xs font-black text-[#0f7f5b]"><span className="app-chip">候选 {runResult.candidateCount} 条</span><span className="app-chip">新增 {runResult.itemCount} 条</span><span className="app-chip">分析 {runResult.reportCount} 条</span>{runResult.searchProvider ? <span className="app-chip">搜索 {runResult.searchProvider}</span> : null}{runResult.summaryProvider ? <span className="app-chip">总结 {runResult.summaryProvider}</span> : null}{runResult.fallbackUsed ? <span className="app-chip text-[#b45309]">已临时使用模拟结果</span> : null}</div><p className="mt-3 text-sm font-bold leading-6 text-[#155f48]">{runResult.overview}</p></section> : null}
         {status === "done" || status === "error" ? (
@@ -701,8 +856,8 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
       </header>
 
       <section className="py-7">
-        <div className="flex items-center justify-between gap-4"><h2 className="text-xl font-black">最近内容</h2><Link href="/search" className="text-sm font-black text-[var(--app-primary)]">搜索已有内容</Link></div>
-        <div className="mt-4 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">{articles.map((article) => <Link key={article.id} href={`/articles/${article.id}`} className="flex min-h-20 items-center justify-between gap-4 py-4 hover:text-[var(--app-primary)]"><span className="min-w-0"><strong className="line-clamp-2 text-base font-black">{article.title}</strong><span className="mt-1 block text-xs font-bold text-[var(--app-text-muted)]">{article.source} · {article.time}</span></span><ArrowRight size={17} className="shrink-0" /></Link>)}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-black">最近内容</h2><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setOnlyUnread((current) => !current)} className={`app-button-secondary min-h-10 px-3 py-2 text-xs ${onlyUnread ? "border-[var(--app-primary)] text-[var(--app-primary)]" : ""}`}>只看新增内容</button><Link href="/search" className="text-sm font-black text-[var(--app-primary)]">搜索已有内容</Link></div></div>
+        <div className="mt-4 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">{visibleArticles.length ? visibleArticles.map((article) => <Link key={article.id} href={`/articles/${article.id}`} className="flex min-h-20 items-center justify-between gap-4 py-4 hover:text-[var(--app-primary)]"><span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><strong className="line-clamp-2 text-base font-black">{article.title}</strong><UnreadBadge kind="article" id={article.id} /></span><span className="mt-1 block text-xs font-bold text-[var(--app-text-muted)]">{article.source} · {article.time}</span></span><ArrowRight size={17} className="shrink-0" /></Link>) : <p className="py-5 text-sm font-semibold text-[var(--app-text-muted)]">当前没有未读内容。</p>}</div>
       </section>
 
       <section className="app-card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -713,6 +868,13 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
       <details id="advanced-info" className="mt-6 border-y border-[var(--app-line)] py-4 text-sm text-[var(--app-text-muted)]">
         <summary className="cursor-pointer font-black text-[var(--app-text)]">高级信息</summary>
         <div id="update-records" className="mt-4 flex items-start gap-3"><ClockCounterClockwise size={18} className="mt-0.5 shrink-0" /><p className="font-semibold leading-6">更新记录默认收起。最近一次整理状态正常，下一次自动更新将在明天上午进行。</p></div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <p className="font-semibold leading-6">排除词：{parsedDescription.preferences.excludeWords.join("、") || "未设置"}</p>
+          <p className="font-semibold leading-6">内容方向：{parsedDescription.preferences.contentDirections.join("、")}</p>
+          <p className="font-semibold leading-6">内容深度：{parsedDescription.preferences.depth}</p>
+          <p className="font-semibold leading-6">搜索范围：{parsedDescription.preferences.searchScope}</p>
+          <p className="font-semibold leading-6">自动总结：{parsedDescription.preferences.autoSummary ? "开启" : "关闭"}</p>
+        </div>
       </details>
 
       <ConfirmDialog action={confirmAction} selectedCount={1} busy={busy} onCancel={() => setConfirmAction(null)} onConfirm={() => resolvedTopic ? removeTopic(resolvedTopic) : undefined} />
