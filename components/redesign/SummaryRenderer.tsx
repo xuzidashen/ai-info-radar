@@ -2,6 +2,7 @@
 
 import { ArrowSquareOut, CheckCircle, Info, ListChecks, ShieldWarning, Sparkle, Target } from "@phosphor-icons/react";
 
+import { SummaryFeedback } from "@/components/redesign/SummaryFeedback";
 import { parseStructuredSummary, type StructuredSummary } from "@/lib/utils/summaryParser";
 
 const contentTypeLabels: Record<StructuredSummary["contentType"], string> = {
@@ -36,10 +37,23 @@ function BulletList({ items, tone = "blue" }: { items: string[]; tone?: "blue" |
   );
 }
 
-export function SummaryRenderer({ content, summary, compact = false }: { content?: string | null; summary?: StructuredSummary; compact?: boolean }) {
+export function SummaryRenderer({
+  content,
+  summary,
+  compact = false,
+  feedbackId,
+  feedbackType = "summary"
+}: {
+  content?: string | null;
+  summary?: StructuredSummary;
+  compact?: boolean;
+  feedbackId?: string;
+  feedbackType?: "article" | "insight" | "summary" | "report";
+}) {
   const data = summary ?? parseStructuredSummary(content);
   const facts = compact ? data.coreFacts.slice(0, 3) : data.coreFacts;
   const details = compact ? data.keyDetails.slice(0, 4) : data.keyDetails;
+  const resolvedFeedbackId = feedbackId || `${data.title}-${data.overview}`.slice(0, 120);
 
   return (
     <div className="space-y-7">
@@ -137,6 +151,8 @@ export function SummaryRenderer({ content, summary, compact = false }: { content
           ) : <p className="mt-3 text-sm font-semibold text-[var(--app-text-muted)]">暂无来源链接，请结合原始内容继续复核。</p>}
         </section>
       ) : null}
+
+      {!compact ? <SummaryFeedback targetId={resolvedFeedbackId} targetType={feedbackType} /> : null}
     </div>
   );
 }

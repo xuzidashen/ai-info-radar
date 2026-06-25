@@ -24,10 +24,12 @@ export type TopicSearchContext = {
   keywords: string[];
   excludeWords: string[];
   contentDirections: string[];
+  sourcePreference?: "官方优先" | "媒体优先" | "全网";
   depth?: string;
   searchScope?: string;
   presetNames: string[];
   queryTemplates: string[];
+  queryTexts: string[];
   queryText: string;
   description: string | null;
   reportEnabled: boolean;
@@ -38,12 +40,16 @@ const contextEnd = "[[/AI_RADAR_TOPIC_CONTEXT]]";
 const preferenceMarker = "[[RADAR_TOPIC_PREFS]]";
 
 type TopicPreferences = {
+  keywords?: string[];
   excludeWords: string[];
   contentDirections: string[];
+  sourcePreference?: "官方优先" | "媒体优先" | "全网";
   depth?: string;
   searchScope?: string;
   autoSummary?: boolean;
 };
+
+const mainFlowMetaPrefix = "[radar-meta]";
 
 function unique(values: string[], limit = 12) {
   const seen = new Set<string>();
@@ -73,6 +79,29 @@ function parseTopicPreferences(description?: string | null): TopicPreferences {
     return { excludeWords: [], contentDirections: [] };
   }
 
+  if (description.startsWith(mainFlowMetaPrefix)) {
+    const lineBreak = description.indexOf("\n");
+    const raw = lineBreak >= 0 ? description.slice(mainFlowMetaPrefix.length, lineBreak).trim() : description.slice(mainFlowMetaPrefix.length).trim();
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const sourcePreference = parsed.sourcePreference === "媒体优先" || parsed.sourcePreference === "全网" || parsed.sourcePreference === "官方优先"
+        ? parsed.sourcePreference
+        : undefined;
+      return {
+        keywords: unique(asStringArray(parsed.keywords), 12),
+        excludeWords: unique(asStringArray(parsed.excludeWords), 12),
+        contentDirections: unique(asStringArray(parsed.contentDirections), 6),
+        sourcePreference,
+        depth: typeof parsed.depth === "string" ? parsed.depth : undefined,
+        searchScope: typeof parsed.searchScope === "string" ? parsed.searchScope : undefined,
+        autoSummary: typeof parsed.autoSummary === "boolean" ? parsed.autoSummary : undefined
+      };
+    } catch {
+      return { excludeWords: [], contentDirections: [] };
+    }
+  }
+
   const markerIndex = description.indexOf(preferenceMarker);
   if (markerIndex < 0) {
     return { excludeWords: [], contentDirections: [] };
@@ -81,9 +110,14 @@ function parseTopicPreferences(description?: string | null): TopicPreferences {
   try {
     const raw = description.slice(markerIndex + preferenceMarker.length).trim();
     const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const sourcePreference = parsed.sourcePreference === "媒体优先" || parsed.sourcePreference === "全网" || parsed.sourcePreference === "官方优先"
+      ? parsed.sourcePreference
+      : undefined;
     return {
+      keywords: unique(asStringArray(parsed.keywords), 12),
       excludeWords: unique(asStringArray(parsed.excludeWords), 12),
       contentDirections: unique(asStringArray(parsed.contentDirections), 6),
+      sourcePreference,
       depth: typeof parsed.depth === "string" ? parsed.depth : undefined,
       searchScope: typeof parsed.searchScope === "string" ? parsed.searchScope : undefined,
       autoSummary: typeof parsed.autoSummary === "boolean" ? parsed.autoSummary : undefined
@@ -94,8 +128,58 @@ function parseTopicPreferences(description?: string | null): TopicPreferences {
 }
 
 function stripTopicPreferences(description: string) {
+  if (description.startsWith(mainFlowMetaPrefix)) {
+    const lineBreak = description.indexOf("\n");
+    return lineBreak >= 0 ? description.slice(lineBreak + 1).trim() : "";
+  }
+
   const markerIndex = description.indexOf(preferenceMarker);
   return markerIndex >= 0 ? description.slice(0, markerIndex).trim() : description;
+}
+
+function sourcePreferenceTerms(sourcePreference?: TopicPreferences["sourcePreference"]) {
+  if (sourcePreference === "官方优先") return ["官方", "公告", "原文"];
+  if (sourcePreference === "媒体优先") return ["媒体", "报道", "来源"];
+  return [];
+}
+
+function depthTerms(depth?: string) {
+  if (depth === "深度") return ["深度", "解读", "影响"];
+  if (depth === "简短") return ["最新", "要点"];
+  return ["最新"];
+}
+
+function negativeTerms(excludeWords: string[]) {
+  return excludeWords.slice(0, 4).map((word) => `-${word}`);
+}
+
+function buildQueryCandidates(input: {
+  topicName: string;
+  keywords: string[];
+  contentDirections: string[];
+  sourcePreference?: TopicPreferences["sourcePreference"];
+  depth?: string;
+  category: string;
+  queryTemplates: string[];
+  excludeWords: string[];
+}) {
+  const baseTerms = unique([
+    input.topicName,
+    ...input.keywords.slice(1, 4),
+    ...input.contentDirections.slice(0, 2),
+    input.category,
+    ...sourcePreferenceTerms(input.sourcePreference),
+    ...depthTerms(input.depth)
+  ], 10);
+  const excludes = negativeTerms(input.excludeWords);
+  const candidateFromTerms = [...baseTerms, ...excludes].join(" ");
+  const candidates = [
+    input.queryTemplates[0],
+    input.queryTemplates[1],
+    candidateFromTerms
+  ].filter((item): item is string => Boolean(item?.trim()));
+
+  return unique(candidates.map((item) => item.replace(/\s+/g, " ").trim().slice(0, 180)), 2);
 }
 
 export function toTopicPresetContext(input: {
@@ -230,7 +314,7 @@ export function buildTopicSearchContext(topic: {
 }): TopicSearchContext {
   const context = parseTopicPresetContext(topic.description);
   const preferences = parseTopicPreferences(topic.description);
-  const keywords = unique([topic.name, ...(context?.keywords ?? [])], 12);
+  const keywords = unique([topic.name, ...(preferences.keywords ?? []), ...(context?.keywords ?? [])], 12);
   const presetNames = context?.presets.map((preset) => preset.name) ?? [];
   const queryTemplates = unique(
     (context?.presets ?? [])
@@ -238,10 +322,17 @@ export function buildTopicSearchContext(topic: {
       .map((template) => template.replaceAll("{keyword}", keywords[0] ?? topic.name)),
     8
   );
-  const queryText = (
-    queryTemplates[0] ||
-    unique([topic.name, ...keywords.slice(1, 3), ...preferences.contentDirections.slice(0, 2), topic.category], 6).join(" ")
-  ).slice(0, 180);
+  const queryTexts = buildQueryCandidates({
+    topicName: topic.name,
+    keywords,
+    contentDirections: preferences.contentDirections,
+    sourcePreference: preferences.sourcePreference,
+    depth: preferences.depth,
+    category: topic.category,
+    queryTemplates,
+    excludeWords: preferences.excludeWords
+  });
+  const queryText = queryTexts[0] ?? topic.name;
   let readableDescription = stripTopicPreferences(topic.description ?? "");
   const start = readableDescription.indexOf(contextStart);
   const end = readableDescription.indexOf(contextEnd);
@@ -254,6 +345,7 @@ export function buildTopicSearchContext(topic: {
     queryTemplates.length ? `推荐查询：${queryTemplates.join("；")}` : "",
     preferences.excludeWords.length ? `排除词：${preferences.excludeWords.join("、")}` : "",
     preferences.contentDirections.length ? `内容方向：${preferences.contentDirections.join("、")}` : "",
+    preferences.sourcePreference ? `来源偏好：${preferences.sourcePreference}` : "",
     preferences.depth ? `内容深度：${preferences.depth}` : "",
     preferences.searchScope ? `搜索范围：${preferences.searchScope}` : ""
   ].filter(Boolean);
@@ -263,10 +355,12 @@ export function buildTopicSearchContext(topic: {
     keywords,
     excludeWords: preferences.excludeWords,
     contentDirections: preferences.contentDirections,
+    sourcePreference: preferences.sourcePreference,
     depth: preferences.depth,
     searchScope: preferences.searchScope,
     presetNames,
     queryTemplates,
+    queryTexts,
     queryText,
     description: descriptionLines.length ? descriptionLines.join("\n") : topic.description ?? null,
     reportEnabled: context?.reportEnabled ?? !topic.description?.includes("报告生成 关闭")

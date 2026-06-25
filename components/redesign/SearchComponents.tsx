@@ -10,7 +10,19 @@ import { recordUsage } from "@/components/redesign/UsageComponents";
 import type { AppSearchResults } from "@/lib/services/appSearchService";
 import type { StructuredSummary } from "@/lib/utils/summaryParser";
 
-type WebResult = { title: string; source: string; url: string; publishedAt?: string | null; content: string; score?: number | null };
+type WebResult = {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt?: string | null;
+  content: string;
+  score?: number | null;
+  qualityLabels?: string[];
+  qualityStatuses?: string[];
+  sourceType?: string;
+  credibility?: { label: string; score: number; reason: string };
+  qualityReason?: string;
+};
 
 function GroupTitle({ icon: Icon, title, count }: { icon: typeof FolderSimple; title: string; count: number }) {
   return <div className="flex items-center gap-2"><Icon size={19} className="text-[var(--app-primary)]" /><h2 className="text-lg font-black">{title}</h2><span className="app-chip">{count}</span></div>;
@@ -146,6 +158,15 @@ export function SearchExperience({ results }: { results: AppSearchResults }) {
                     <a href={result.url} target="_blank" rel="noreferrer" className="font-black leading-6 hover:text-[var(--app-primary)]">{result.title} <ArrowSquareOut size={14} className="inline" /></a>
                     <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{result.content || "暂无摘要"}</p>
                     <p className="mt-2 text-xs font-bold text-[var(--app-text-muted)]">{result.source}{result.publishedAt ? ` · ${new Date(result.publishedAt).toLocaleDateString("zh-CN")}` : ""}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(result.qualityLabels?.length ? result.qualityLabels : ["可参考"]).map((label) => (
+                        <span key={label} className={`app-chip ${label === "高可信" ? "text-[#0f8b62]" : label.includes("复核") || label.includes("低") || label.includes("旧") || label.includes("重复") ? "text-[#b45309]" : ""}`}>{label}</span>
+                      ))}
+                      <span className="app-chip">来源类型：{result.sourceType || "unknown"}</span>
+                      {result.credibility ? <span className="app-chip">可信度：{result.credibility.label}</span> : null}
+                    </div>
+                    {!result.url ? <p className="mt-2 text-xs font-bold text-[#b45309]">来源链接缺失，建议复核。</p> : null}
+                    {result.sourceType === "self_media" ? <p className="mt-2 text-xs font-bold text-[#b45309]">单一自媒体来源，可信度需复核。</p> : null}
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <button type="button" onClick={() => saveResult(result)} disabled={savedUrls.includes(result.url)} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><BookmarkSimple size={15} weight={savedUrls.includes(result.url) ? "fill" : "regular"} />{savedUrls.includes(result.url) ? "已保存" : "保存"}</button>

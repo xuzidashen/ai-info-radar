@@ -16,6 +16,8 @@ export type RedesignArticle = {
   publishedAt?: string;
   credibilityLabel?: string | null;
   credibilityReason?: string | null;
+  qualityLabels?: string[];
+  sourceType?: string | null;
 };
 
 export type FollowTopic = {

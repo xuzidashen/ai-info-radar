@@ -4,12 +4,12 @@ import { ArrowRight, ArrowSquareOut, BookmarkSimple, CheckCircle, Clock, FileTex
 import { UnreadBadge } from "@/components/redesign/ReadState";
 import type { FollowTopic, Insight, RedesignArticle } from "@/lib/mock/redesignData";
 
-export function AttentionOverview({ stats }: { stats: { topicCount: number; todayItemCount: number; insightCount: number; lastUpdated: string } }) {
+export function AttentionOverview({ stats }: { stats: { topicCount: number; todayItemCount: number; insightCount: number; lastUpdated: string; updatedTopicCount?: number; highTrustCount?: number; needsReviewCount?: number } }) {
   const items = [
     { label: "关注主题", value: stats.topicCount, icon: FolderSimple, tone: "text-[#2563eb] bg-[#e9f0ff]" },
     { label: "今日新增", value: stats.todayItemCount, icon: FileText, tone: "text-[#0f9f6e] bg-[#e7f7f1]" },
-    { label: "分析结果", value: stats.insightCount, icon: Sparkle, tone: "text-[#b45309] bg-[#fff4df]" },
-    { label: "最近更新", value: stats.lastUpdated, icon: Clock, tone: "text-[#6d5bd0] bg-[#f0edff]" }
+    { label: "有更新主题", value: stats.updatedTopicCount ?? 0, icon: Clock, tone: "text-[#6d5bd0] bg-[#f0edff]" },
+    { label: "需复核", value: stats.needsReviewCount ?? 0, icon: Sparkle, tone: "text-[#b45309] bg-[#fff4df]" }
   ];
 
   return (
@@ -20,6 +20,22 @@ export function AttentionOverview({ stats }: { stats: { topicCount: number; toda
           const Icon = item.icon;
           return <div key={item.label} className="rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-4"><span className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon size={19} weight="duotone" /></span><strong className="mt-3 block truncate text-xl font-black">{item.value}</strong><span className="mt-1 block text-xs font-bold text-[var(--app-text-muted)]">{item.label}</span></div>;
         })}
+      </div>
+    </section>
+  );
+}
+
+export function TrustOverview({ stats }: { stats: { highTrustCount?: number; needsReviewCount?: number; lastUpdated: string } }) {
+  return (
+    <section className="rounded-lg border border-[#cfe5d9] bg-[#f3fbf7] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-black text-[#0f8b62]">今日变化提醒</p>
+          <p className="mt-1 text-sm font-semibold leading-6 text-[#285f4b]">
+            高可信 {stats.highTrustCount ?? 0} 条，需复核 {stats.needsReviewCount ?? 0} 条。最近更新：{stats.lastUpdated}。
+          </p>
+        </div>
+        <Link href="/topics" className="app-button-secondary shrink-0">查看更新主题</Link>
       </div>
     </section>
   );
@@ -79,7 +95,7 @@ export function TopicActivity({ articles }: { articles: RedesignArticle[] }) {
         <article key={article.id} className="rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="app-chip text-[var(--app-primary)]">{article.topicTitle || article.category}</span>
-            {article.tags.slice(0, 2).map((tag) => <span key={tag} className="app-chip">{tag}</span>)}
+            {(article.qualityLabels?.length ? article.qualityLabels : article.tags.slice(0, 2)).map((tag) => <span key={tag} className={`app-chip ${tag === "高可信" ? "text-[#0f8b62]" : tag.includes("复核") || tag.includes("低") || tag.includes("旧") || tag.includes("重复") ? "text-[#b45309]" : ""}`}>{tag}</span>)}
             <UnreadBadge kind="article" id={article.id} />
           </div>
           <Link href={`/articles/${article.id}`} className="mt-3 block hover:text-[var(--app-primary)]">
@@ -87,10 +103,12 @@ export function TopicActivity({ articles }: { articles: RedesignArticle[] }) {
             <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">AI 速读：{article.excerpt}</p>
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-[var(--app-text-muted)]">
-            <span>来源：{article.source}</span>
+            <span>来源：{article.source || "未披露"}</span>
+            <span>类型：{article.sourceType || "unknown"}</span>
             <span>时间：{article.time}</span>
             <span>{article.score.toFixed(1)} 分</span>
           </div>
+          {!article.url ? <p className="mt-2 text-xs font-bold text-[#b45309]">来源链接缺失，建议复核。</p> : null}
           <div className="mt-3 flex flex-wrap gap-2">
             {article.url ? <a href={article.url} target="_blank" rel="noreferrer" className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><ArrowSquareOut size={15} />原帖</a> : null}
             <Link href={`/articles/${article.id}`} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><Sparkle size={15} />摘要</Link>

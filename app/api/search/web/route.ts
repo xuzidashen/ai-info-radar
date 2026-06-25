@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { TavilySearchProvider } from "@/lib/providers/search/tavilySearchProvider";
+import { evaluateSearchResultQuality } from "@/lib/utils/infoQuality";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "同一关键词 45 秒内不会重复调用 Tavily", retryAfter: Math.ceil((COOLDOWN_MS - age) / 1000), results: previous.results }, { status: 429 });
     }
 
-    const result = await new TavilySearchProvider().search({ keywordName: query, queryText: query, category: "custom", maxResults: 5, timeRange: "week" });
-    cache.set(key, { at: Date.now(), results: result.results });
-    return NextResponse.json({ query, provider: result.provider, results: result.results.slice(0, 5), cooldownSeconds: 45 });
+    const result = await new TavilySearchProvider().search({ keywordName: query, queryText: `${query} 最新 来源`, category: "custom", maxResults: 5, timeRange: "week" });
+    const results = result.results.slice(0, 5).map((item) => {
+      const quality = evaluateSearchResultQuality({ result: item, keywordName: query });
+      return {
+        ...item,
+        qualityLabels: quality.labels,
+        qualityStatuses: quality.statuses,
+        sourceType: quality.sourceType,
+        credibility: quality.credibility,
+        qualityReason: quality.reason
+      };
+    });
+    cache.set(key, { at: Date.now(), results });
+    return NextResponse.json({ query, provider: result.provider, results, cooldownSeconds: 45 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "全网搜索失败，请稍后重试";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, ArrowSquareOut, Info, ListChecks } from "@phosph
 
 import type { RedesignArticle } from "@/lib/mock/redesignData";
 import { ArticleActionRow } from "@/components/redesign/NewsCards";
+import { SummaryFeedback } from "@/components/redesign/SummaryFeedback";
 
 export function ArticleHeader({ article }: { article: RedesignArticle }) {
   return (
@@ -55,6 +56,16 @@ export function ArticleBody({ article }: { article: RedesignArticle }) {
             <p className="mt-2 text-sm font-bold">{article.credibilityLabel || "未知"}{article.credibilityReason ? ` · ${article.credibilityReason}` : ""}</p>
           </div>
         </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(article.qualityLabels?.length ? article.qualityLabels : article.tags.slice(0, 3)).map((label) => (
+            <span key={label} className={`app-chip ${label === "高可信" ? "text-[#0f8b62]" : label.includes("复核") || label.includes("低") || label.includes("旧") || label.includes("重复") ? "text-[#b45309]" : ""}`}>
+              {label}
+            </span>
+          ))}
+          <span className="app-chip">来源类型：{article.sourceType || "unknown"}</span>
+        </div>
+        {!article.url ? <p className="mt-3 rounded-lg border border-[#f0d5a4] bg-[#fff9ed] p-3 text-xs font-bold text-[#79521c]">来源链接缺失，建议复核。</p> : null}
+        {article.sourceType === "self_media" ? <p className="mt-3 rounded-lg border border-[#f0d5a4] bg-[#fff9ed] p-3 text-xs font-bold text-[#79521c]">单一自媒体来源，可信度需复核。</p> : null}
         {article.url ? (
           <a href={article.url} target="_blank" rel="noreferrer" className="app-button-secondary mt-5 inline-flex">
             <ArrowSquareOut size={17} />打开原帖
@@ -68,6 +79,9 @@ export function ArticleBody({ article }: { article: RedesignArticle }) {
       <section className="mt-8 rounded-lg border border-[#f0d5a4] bg-[#fff9ed] p-4 text-sm font-semibold leading-7 text-[#79521c]">
         <div className="flex items-start gap-3"><Info size={18} className="mt-1 shrink-0" />以上内容来自公开来源摘要，重要政策、公告和财经信息请以原文为准。</div>
       </section>
+      <div className="mt-6">
+        <SummaryFeedback targetId={article.id} targetType="article" />
+      </div>
       <div className="mt-8 flex flex-wrap gap-2 border-t border-[var(--app-line)] pt-6">
         {article.tags.map((tag) => <span key={tag} className="app-chip">{tag}</span>)}
       </div>

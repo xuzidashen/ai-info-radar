@@ -24,9 +24,10 @@ import { useToast } from "@/components/ui/Toast";
 import type { FollowTopic, RedesignArticle } from "@/lib/mock/redesignData";
 
 const STORAGE_KEY = "ai-radar-custom-topics";
-const directions = ["新闻动态", "政策变化", "公司进展", "学习资料", "技术文章"];
+const directions = ["新闻动态", "政策变化", "公司公告", "财报", "技术文章", "学习资料", "人物动态"];
 const preferenceMarker = "[[RADAR_TOPIC_PREFS]]";
-const contentDirections = ["新闻", "政策", "公司", "学习资料", "技术文章"];
+const contentDirections = ["新闻", "政策", "公司公告", "财报", "技术文章", "学习资料", "人物动态"];
+const sourcePreferences = ["官方优先", "媒体优先", "全网"] as const;
 const topicRunCooldownSeconds = 180;
 
 type StoredTopic = FollowTopic & { createdAt: string };
@@ -35,6 +36,7 @@ type RunStatus = "idle" | "searching" | "filtering" | "summarizing" | "reporting
 type TopicPreferences = {
   excludeWords: string[];
   contentDirections: string[];
+  sourcePreference: "官方优先" | "媒体优先" | "全网";
   depth: "简短" | "标准" | "深度";
   searchScope: "只搜索已有内容" | "允许全网搜索";
   autoSummary: boolean;
@@ -91,6 +93,7 @@ function defaultTopicPreferences(): TopicPreferences {
   return {
     excludeWords: [],
     contentDirections: ["新闻"],
+    sourcePreference: "官方优先",
     depth: "标准",
     searchScope: "允许全网搜索",
     autoSummary: true
@@ -111,6 +114,7 @@ function parseDescriptionWithPreferences(value: string) {
       preferences: {
         excludeWords: Array.isArray(parsed.excludeWords) ? parsed.excludeWords.filter((item): item is string => typeof item === "string") : defaults.excludeWords,
         contentDirections: Array.isArray(parsed.contentDirections) && parsed.contentDirections.length ? parsed.contentDirections.filter((item): item is string => typeof item === "string") : defaults.contentDirections,
+        sourcePreference: parsed.sourcePreference === "媒体优先" || parsed.sourcePreference === "全网" ? parsed.sourcePreference : defaults.sourcePreference,
         depth: parsed.depth === "简短" || parsed.depth === "深度" ? parsed.depth : defaults.depth,
         searchScope: parsed.searchScope === "只搜索已有内容" ? parsed.searchScope : defaults.searchScope,
         autoSummary: typeof parsed.autoSummary === "boolean" ? parsed.autoSummary : defaults.autoSummary
@@ -462,10 +466,16 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
     return directions[0];
   });
   const [keywords, setKeywords] = useState(initialKeywords.join("，"));
+  const [excludeWords, setExcludeWords] = useState("");
+  const [sourcePreference, setSourcePreference] = useState<TopicPreferences["sourcePreference"]>("官方优先");
+  const [depth, setDepth] = useState<TopicPreferences["depth"]>("标准");
+  const [searchScope, setSearchScope] = useState<TopicPreferences["searchScope"]>("允许全网搜索");
+  const [autoSummary, setAutoSummary] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const keywordList = useMemo(() => splitKeywords(keywords).slice(0, 5), [keywords]);
+  const excludeWordList = useMemo(() => splitKeywords(excludeWords).slice(0, 8), [excludeWords]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -485,7 +495,12 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
           title: title.trim(),
           description: description.trim(),
           direction,
-          keywords: keywordList.length ? keywordList : [title.trim()]
+          keywords: keywordList.length ? keywordList : [title.trim()],
+          excludeWords: excludeWordList,
+          sourcePreference,
+          depth,
+          searchScope,
+          autoSummary
         })
       });
 
@@ -497,7 +512,14 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
         saveStoredTopic({
           id: data.topic.id,
           title: title.trim(),
-          description: description.trim() || `持续整理与“${title.trim()}”有关的重要变化。`,
+          description: buildDescriptionWithPreferences(description.trim() || `持续整理与“${title.trim()}”有关的重要变化。`, {
+            excludeWords: excludeWordList,
+            contentDirections: [direction],
+            sourcePreference,
+            depth,
+            searchScope,
+            autoSummary
+          }),
           keywords: keywordList.length ? keywordList : [title.trim()],
           category: direction,
           updatedAt: "刚刚创建",
@@ -516,7 +538,14 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
       saveStoredTopic({
         id,
         title: title.trim(),
-        description: description.trim() || `持续整理与“${title.trim()}”有关的重要变化。`,
+        description: buildDescriptionWithPreferences(description.trim() || `持续整理与“${title.trim()}”有关的重要变化。`, {
+          excludeWords: excludeWordList,
+          contentDirections: [direction],
+          sourcePreference,
+          depth,
+          searchScope,
+          autoSummary
+        }),
         keywords: keywordList.length ? keywordList : [title.trim()],
         category: direction,
         updatedAt: "刚刚创建",
@@ -567,7 +596,38 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
             <p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">可添加关键词，帮助雷达减少无关内容。</p>
             <label className="mt-7 block text-sm font-black" htmlFor="topic-keywords">关键词 <span className="font-semibold text-[var(--app-text-muted)]">（可选）</span></label>
             <input id="topic-keywords" value={keywords} onChange={(event) => setKeywords(event.target.value)} placeholder="用逗号分隔，例如：智能体，工作流" className="app-input mt-2" />
-            <div className="mt-6 rounded-lg bg-[var(--app-surface-muted)] p-4"><strong className="block text-base font-black">{title || "未填写话题"}</strong><p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">方向：{direction}</p><p className="mt-1 text-sm font-semibold text-[var(--app-text-muted)]">关键词：{keywordList.join("、") || title || "创建后可补充"}</p></div>
+            <label className="mt-5 block text-sm font-black" htmlFor="topic-exclude">排除词 <span className="font-semibold text-[var(--app-text-muted)]">（可选）</span></label>
+            <input id="topic-exclude" value={excludeWords} onChange={(event) => setExcludeWords(event.target.value)} placeholder="用逗号分隔，例如：广告，旧闻" className="app-input mt-2" />
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-black" htmlFor="topic-source">来源偏好
+                <select id="topic-source" value={sourcePreference} onChange={(event) => setSourcePreference(event.target.value as TopicPreferences["sourcePreference"])} className="app-input mt-2">
+                  {sourcePreferences.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm font-black" htmlFor="topic-depth">内容深度
+                <select id="topic-depth" value={depth} onChange={(event) => setDepth(event.target.value as TopicPreferences["depth"])} className="app-input mt-2">
+                  <option value="简短">简短</option>
+                  <option value="标准">标准</option>
+                  <option value="深度">深度</option>
+                </select>
+              </label>
+              <label className="block text-sm font-black" htmlFor="topic-scope">搜索范围
+                <select id="topic-scope" value={searchScope} onChange={(event) => setSearchScope(event.target.value as TopicPreferences["searchScope"])} className="app-input mt-2">
+                  <option value="只搜索已有内容">只搜索已有内容</option>
+                  <option value="允许全网搜索">允许全网搜索</option>
+                </select>
+              </label>
+              <label className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[var(--app-line)] bg-[var(--app-surface-muted)] px-4 text-sm font-black">
+                <span>自动总结</span>
+                <input type="checkbox" checked={autoSummary} onChange={(event) => setAutoSummary(event.target.checked)} className="h-5 w-5 accent-[#2563eb]" />
+              </label>
+            </div>
+            <div className="mt-6 rounded-lg bg-[var(--app-surface-muted)] p-4">
+              <strong className="block text-base font-black">{title || "未填写话题"}</strong>
+              <p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">方向：{direction} · 来源：{sourcePreference} · 深度：{depth}</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--app-text-muted)]">关键词：{keywordList.join("、") || title || "创建后可补充"}</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--app-text-muted)]">排除词：{excludeWordList.join("、") || "未设置"}</p>
+            </div>
           </div>
         ) : null}
         <div className="mt-8 flex items-center justify-between gap-3 border-t border-[var(--app-line)] pt-5">
@@ -590,6 +650,7 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
   const [keywords, setKeywords] = useState(topic.keywords.join("，"));
   const [excludeWords, setExcludeWords] = useState(parsedTopic.preferences.excludeWords.join("，"));
   const [selectedDirections, setSelectedDirections] = useState<string[]>(parsedTopic.preferences.contentDirections);
+  const [sourcePreference, setSourcePreference] = useState<TopicPreferences["sourcePreference"]>(parsedTopic.preferences.sourcePreference);
   const [depth, setDepth] = useState<TopicPreferences["depth"]>(parsedTopic.preferences.depth);
   const [searchScope, setSearchScope] = useState<TopicPreferences["searchScope"]>(parsedTopic.preferences.searchScope);
   const [autoSummary, setAutoSummary] = useState(parsedTopic.preferences.autoSummary);
@@ -604,6 +665,7 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
       const preferences: TopicPreferences = {
         excludeWords: splitKeywords(excludeWords),
         contentDirections: selectedDirections.length ? selectedDirections : [category],
+        sourcePreference,
         depth,
         searchScope,
         autoSummary
@@ -615,6 +677,7 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
         keywords: splitKeywords(keywords),
         excludeWords: preferences.excludeWords,
         contentDirections: preferences.contentDirections,
+        sourcePreference: preferences.sourcePreference,
         depth: preferences.depth,
         searchScope: preferences.searchScope,
         autoSummary: preferences.autoSummary
@@ -669,6 +732,11 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
           </div>
         </div>
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-black" htmlFor="edit-topic-source">来源偏好
+            <select id="edit-topic-source" value={sourcePreference} onChange={(event) => setSourcePreference(event.target.value as TopicPreferences["sourcePreference"])} className="app-input mt-2">
+              {sourcePreferences.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
           <label className="block text-sm font-black" htmlFor="edit-topic-depth">内容深度
             <select id="edit-topic-depth" value={depth} onChange={(event) => setDepth(event.target.value as TopicPreferences["depth"])} className="app-input mt-2">
               <option value="简短">简短</option>
@@ -881,6 +949,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <p className="font-semibold leading-6">排除词：{parsedDescription.preferences.excludeWords.join("、") || "未设置"}</p>
           <p className="font-semibold leading-6">内容方向：{parsedDescription.preferences.contentDirections.join("、")}</p>
+          <p className="font-semibold leading-6">来源偏好：{parsedDescription.preferences.sourcePreference}</p>
           <p className="font-semibold leading-6">内容深度：{parsedDescription.preferences.depth}</p>
           <p className="font-semibold leading-6">搜索范围：{parsedDescription.preferences.searchScope}</p>
           <p className="font-semibold leading-6">自动总结：{parsedDescription.preferences.autoSummary ? "开启" : "关闭"}</p>

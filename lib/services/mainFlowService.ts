@@ -2,6 +2,7 @@ import type { InfoItem, Keyword, WorkspaceZone, ZoneReport, ZoneTopic } from "@p
 
 import { prisma } from "@/lib/prisma";
 import { parseStructuredSummary, type StructuredSummary } from "@/lib/utils/summaryParser";
+import { qualityLabelFromInfo } from "@/lib/utils/infoQuality";
 import {
   followTopics,
   getFollowTopic,
@@ -53,6 +54,7 @@ type TopicMetadata = {
   keywords?: string[];
   excludeWords?: string[];
   contentDirections?: string[];
+  sourcePreference?: "官方优先" | "媒体优先" | "全网";
   depth?: "简短" | "标准" | "深度";
   searchScope?: "只搜索已有内容" | "允许全网搜索";
   autoSummary?: boolean;
@@ -204,9 +206,17 @@ function splitBody(item: InfoItemWithKeyword) {
 
 export function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle {
   const category = categoryLabel(item.keyword?.category ?? item.eventType ?? item.importance);
+  const quality = qualityLabelFromInfo({
+    credibilityLabel: item.credibilityLabel,
+    credibilityReason: item.credibilityReason,
+    url: item.url,
+    source: item.source,
+    publishedAt: item.publishedAt,
+    score: item.score
+  });
   const tags = [
     category,
-    item.credibilityLabel ? `可信度 ${item.credibilityLabel}` : null,
+    ...quality.labels,
     item.importance === "high" ? "重点" : null
   ].filter((tag): tag is string => Boolean(tag));
 
@@ -226,6 +236,8 @@ export function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle
     publishedAt: (item.publishedAt ?? item.createdAt).toISOString(),
     credibilityLabel: item.credibilityLabel,
     credibilityReason: item.credibilityReason,
+    qualityLabels: quality.labels,
+    sourceType: item.eventSubtype ?? quality.sourceType,
     topicTitle: item.keyword?.name
   };
 }
@@ -370,7 +382,15 @@ export async function getMainFlowHomeView() {
     topics: followTopics,
     articles: fallbackArticles,
     insights: mockInsights.filter((insight) => followTopics.some((topic) => topic.id === insight.topicId)).slice(0, 4),
-    stats: { topicCount: followTopics.length, todayItemCount: fallbackArticles.length, insightCount: mockInsights.length, lastUpdated: followTopics[0]?.updatedAt ?? "暂无更新" }
+    stats: {
+      topicCount: followTopics.length,
+      todayItemCount: fallbackArticles.length,
+      insightCount: mockInsights.length,
+      lastUpdated: followTopics[0]?.updatedAt ?? "暂无更新",
+      updatedTopicCount: followTopics.length ? 2 : 0,
+      highTrustCount: Math.min(3, fallbackArticles.length),
+      needsReviewCount: Math.max(0, fallbackArticles.length - 2)
+    }
   };
 
   if (!canUseDatabase()) {
@@ -388,7 +408,7 @@ export async function getMainFlowHomeView() {
       }
     });
     if (!topics.length) {
-      return { topics: [], articles: [], insights: [], stats: { topicCount: 0, todayItemCount: 0, insightCount: 0, lastUpdated: "暂无更新" } };
+      return { topics: [], articles: [], insights: [], stats: { topicCount: 0, todayItemCount: 0, insightCount: 0, lastUpdated: "暂无更新", updatedTopicCount: 0, highTrustCount: 0, needsReviewCount: 0 } };
     }
 
     const keywordIds = topics.flatMap((topic) => topic.keywordId ? [topic.keywordId] : []);
@@ -423,7 +443,10 @@ export async function getMainFlowHomeView() {
         topicCount: topics.length,
         todayItemCount,
         insightCount: filteredReports.length,
-        lastUpdated: formatRelativeTime(topics[0].updatedAt)
+        lastUpdated: formatRelativeTime(topics[0].updatedAt),
+        updatedTopicCount: topics.filter((topic) => (topic.keyword?._count.infoItems ?? 0) > 0).length,
+        highTrustCount: articles.filter((article) => article.qualityLabels?.includes("高可信")).length,
+        needsReviewCount: articles.filter((article) => article.qualityLabels?.includes("需复核") || article.qualityLabels?.includes("低相关")).length
       }
     };
   })(), fallback, "home", 1500);
@@ -706,6 +729,7 @@ export type TopicEditInput = {
   keywords: string[];
   excludeWords?: string[];
   contentDirections?: string[];
+  sourcePreference?: "官方优先" | "媒体优先" | "全网";
   depth?: "简短" | "标准" | "深度";
   searchScope?: "只搜索已有内容" | "允许全网搜索";
   autoSummary?: boolean;
@@ -733,6 +757,7 @@ export async function updateMainFlowTopic(id: string, input: TopicEditInput) {
         keywords: input.keywords,
         excludeWords: input.excludeWords ?? parsed.metadata.excludeWords,
         contentDirections: input.contentDirections ?? parsed.metadata.contentDirections,
+        sourcePreference: input.sourcePreference ?? parsed.metadata.sourcePreference,
         depth: input.depth ?? parsed.metadata.depth,
         searchScope: input.searchScope ?? parsed.metadata.searchScope,
         autoSummary: input.autoSummary ?? parsed.metadata.autoSummary,

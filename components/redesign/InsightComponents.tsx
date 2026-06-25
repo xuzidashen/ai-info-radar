@@ -94,7 +94,7 @@ export function InsightArticle({ insight, related }: { insight: Insight; related
         <p className="mt-4 text-sm font-bold text-[var(--app-text-muted)]">所属主题：{insight.topicTitle} · 生成于 {insight.generatedAt}</p>
       </header>
 
-      <section className="py-7"><SummaryRenderer summary={structuredInsight(insight)} /></section>
+      <section className="py-7"><SummaryRenderer summary={structuredInsight(insight)} feedbackId={insight.id} feedbackType="insight" /></section>
 
       <section className="border-t border-[var(--app-line)] py-7">
         <h2 className="text-xl font-black">来源列表</h2>

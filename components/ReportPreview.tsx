@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, ChevronDown, Copy, FileText } from "lucide-react";
 
 import { ActionButton } from "@/components/ui/ActionButton";
+import { SummaryFeedback } from "@/components/redesign/SummaryFeedback";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { useToast } from "@/components/ui/Toast";
 import type { ZoneReportDTO } from "@/lib/types";
@@ -80,6 +81,8 @@ export function ReportPreview({
           <pre className="mt-4 max-h-[32rem] overflow-auto whitespace-pre-wrap text-sm leading-7 text-slate-600">{report.markdown}</pre>
         </details>
       ) : null}
+
+      {!compact ? <div className="mt-4"><SummaryFeedback targetId={report.id} targetType="report" compact /></div> : null}
     </article>
   );
 }

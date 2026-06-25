@@ -29,6 +29,11 @@ export async function POST(request: Request) {
       description?: string;
       direction?: string;
       keywords?: string[];
+      excludeWords?: string[];
+      sourcePreference?: "官方优先" | "媒体优先" | "全网";
+      depth?: "简短" | "标准" | "深度";
+      searchScope?: "只搜索已有内容" | "允许全网搜索";
+      autoSummary?: boolean;
     };
     const title = body.title?.trim();
 
@@ -58,6 +63,7 @@ export async function POST(request: Request) {
 
     const direction = body.direction?.trim() || "新闻动态";
     const keywords = body.keywords?.map((item) => item.trim()).filter(Boolean) ?? [];
+    const excludeWords = body.excludeWords?.map((item) => item.trim()).filter(Boolean).slice(0, 12) ?? [];
     const topic = await prisma.zoneTopic.create({
       data: {
         zoneId: zone.id,
@@ -76,7 +82,13 @@ export async function POST(request: Request) {
       title,
       description: body.description?.trim() || `持续整理与“${title}”有关的重要变化。`,
       category: direction,
-      keywords: keywords.length ? keywords : [title]
+      keywords: keywords.length ? keywords : [title],
+      excludeWords,
+      contentDirections: [direction],
+      sourcePreference: body.sourcePreference ?? "官方优先",
+      depth: body.depth ?? "标准",
+      searchScope: body.searchScope ?? "允许全网搜索",
+      autoSummary: body.autoSummary ?? true
     });
 
     return NextResponse.json({ topic: { id: topic.id, title: topic.name } });

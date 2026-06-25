@@ -1,4 +1,5 @@
 import type { NormalizedSearchResult } from "@/lib/providers/search/types";
+import { canonicalizeUrl } from "@/lib/utils/infoQuality";
 import { getSourceCredibility } from "@/lib/utils/sourceCredibility";
 
 function normalizeTitle(title: string) {
@@ -14,6 +15,10 @@ function hostOf(url: string) {
   } catch {
     return "";
   }
+}
+
+function canonicalOf(url: string) {
+  return canonicalizeUrl(url).replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
 function charSimilarity(a: string, b: string) {
@@ -59,10 +64,14 @@ export function dedupeResults(results: NormalizedSearchResult[]): NormalizedSear
         return true;
       }
 
+      if (existing.url && result.url && canonicalOf(existing.url) === canonicalOf(result.url)) {
+        return true;
+      }
+
       const titleSimilarity = charSimilarity(existing.title, result.title);
       const sameSource = existing.source === result.source || hostOf(existing.url) === hostOf(result.url);
 
-      return titleSimilarity >= 0.88 || (sameSource && titleSimilarity >= 0.72);
+      return titleSimilarity >= 0.86 || (sameSource && titleSimilarity >= 0.68);
     });
 
     if (sameIndex === -1) {

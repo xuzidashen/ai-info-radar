@@ -4,7 +4,7 @@ import type { NormalizedSearchResult } from "@/lib/providers/search/types";
 import type { KeywordCategory } from "@/lib/types";
 import { dedupeResults } from "@/lib/utils/dedupeResults";
 import { filterResults } from "@/lib/utils/filterResults";
-import { getSourceCredibility } from "@/lib/utils/sourceCredibility";
+import { evaluateSearchResultQuality } from "@/lib/utils/infoQuality";
 
 export function processSearchResults(results: NormalizedSearchResult[], keywordName: string) {
   return dedupeResults(
@@ -14,10 +14,17 @@ export function processSearchResults(results: NormalizedSearchResult[], keywordN
     })
   )
     .slice(0, 8)
-    .map((result) => ({
-      ...result,
-      credibility: getSourceCredibility(result.source, result.url)
-    }));
+    .map((result) => {
+      const quality = evaluateSearchResultQuality({ result, keywordName });
+      return {
+        ...result,
+        credibility: quality.credibility,
+        qualityLabels: quality.labels,
+        qualityStatuses: quality.statuses,
+        sourceType: quality.sourceType,
+        qualityReason: quality.reason
+      };
+    });
 }
 
 export async function runSearchForTest(input: {

@@ -2,7 +2,7 @@ import type { InfoItem } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { runSearchProvider } from "@/lib/providers/search";
-import type { NormalizedSearchResult, SearchRunResult } from "@/lib/providers/search/types";
+import type { NormalizedSearchResult, SearchProviderName, SearchRunResult } from "@/lib/providers/search/types";
 import { runSummaryProvider } from "@/lib/providers/summary";
 import { runFactorProvider } from "@/lib/providers/factor";
 import { serializeDailySignal, serializeInfoItem, serializeSummary } from "@/lib/serializers";
@@ -21,6 +21,7 @@ import { getDefaultTemplate, getTemplateById } from "@/lib/templates/summaryTemp
 import type { Importance, KeywordCategory, SearchMode, Sentiment, TopicRunTriggerType, TopicRunType } from "@/lib/types";
 import { dedupeResults } from "@/lib/utils/dedupeResults";
 import { filterResults } from "@/lib/utils/filterResults";
+import { evaluateSearchResultQuality } from "@/lib/utils/infoQuality";
 import { buildScoreReason, deriveItemTags, toDisplayScore } from "@/lib/utils/itemScoring";
 import { getSourceCredibility } from "@/lib/utils/sourceCredibility";
 import { parseStructuredSummary, structuredSummaryToMarkdown, type StructuredSummary } from "@/lib/utils/summaryParser";
@@ -32,6 +33,9 @@ type EnrichedSearchResult = NormalizedSearchResult & {
     label: "high" | "medium" | "low" | "unknown";
     reason: string;
   };
+  qualityLabels?: string[];
+  qualityStatuses?: string[];
+  sourceType?: string;
 };
 
 type SearchWithQuality = SearchRunResult & {
@@ -201,6 +205,7 @@ function buildReportMetadata(input: {
   items: InfoItem[];
   category: string;
   queryText?: string;
+  queryTexts?: string[];
   keywords?: string[];
   presetNames?: string[];
   structuredSummary: StructuredSummary;
@@ -221,6 +226,7 @@ function buildReportMetadata(input: {
     averageScore: averageScore(input.items),
     topTags: collectTopTags(input.items, input.category, input.searchProvider),
     queryText: input.queryText,
+    queryTexts: input.queryTexts ?? [],
     keywords: input.keywords ?? [],
     presetNames: input.presetNames ?? [],
     highScoreItems: sources.slice(0, 5).map((source) => ({
@@ -300,10 +306,19 @@ function processSearchWithCounts(results: NormalizedSearchResult[], keywordName:
     maxResults: 12
   });
   const deduped = dedupeResults(filtered);
-  const processedResults = deduped.slice(0, 8).map((result) => ({
-    ...result,
-    credibility: getSourceCredibility(result.source, result.url)
-  }));
+  const processedResults = deduped.slice(0, 8).map((result) => {
+    const quality = evaluateSearchResultQuality({
+      result,
+      keywordName
+    });
+    return {
+      ...result,
+      credibility: quality.credibility,
+      qualityLabels: quality.labels,
+      qualityStatuses: quality.statuses,
+      sourceType: quality.sourceType
+    };
+  });
 
   return {
     processedResults,
@@ -328,12 +343,28 @@ async function runSearchWithQualityFallback(input: {
   category: KeywordCategory;
   description?: string | null;
   queryText?: string | null;
+  queryTexts?: string[];
 }): Promise<SearchWithQuality> {
   const startedAt = Date.now();
-  const searchRun = await runSearchProvider({
-    ...input,
-    maxResults: 5
-  }, { allowFallback: true });
+  const queries = Array.from(new Set((input.queryTexts?.length ? input.queryTexts : [input.queryText ?? input.keywordName]).map((item) => item.trim()).filter(Boolean))).slice(0, 2);
+  const searchRuns = await Promise.all(
+    queries.map((queryText) =>
+      runSearchProvider({
+        ...input,
+        queryText,
+        maxResults: 5
+      }, { allowFallback: true })
+    )
+  );
+  const combinedProvider: SearchProviderName = searchRuns.some((run) => run.provider === "tavily") ? "tavily" : "mock";
+  const searchRun = {
+    ...searchRuns[0],
+    results: searchRuns.flatMap((run) => run.results),
+    provider: combinedProvider,
+    requestedProvider: searchRuns[0].requestedProvider,
+    fallbackUsed: searchRuns.some((run) => run.fallbackUsed),
+    error: searchRuns.map((run) => run.error).filter(Boolean).join("；") || undefined
+  };
   const processed = processSearchWithCounts(searchRun.results, input.keywordName);
 
   if (processed.processedResults.length > 0) {
@@ -435,7 +466,8 @@ async function saveSearchAndSummary(input: {
     keywordName: searchContext.primaryKeyword,
     category: keywordCategory,
     description: searchContext.description,
-    queryText: searchContext.queryText
+    queryText: searchContext.queryText,
+    queryTexts: searchContext.queryTexts
   });
   searchRun.processedResults = applyExcludeWords(searchRun.processedResults, searchContext.excludeWords);
   searchRun.dedupedCount = searchRun.processedResults.length;
@@ -462,7 +494,9 @@ async function saveSearchAndSummary(input: {
             fetchedAt: now,
             credibilityScore: result.credibility.score,
             credibilityLabel: result.credibility.label,
-            credibilityReason: result.credibility.reason,
+            credibilityReason: `${result.qualityLabels?.join("、") || "可参考"}。${result.credibility.reason}`,
+            eventType: result.qualityStatuses?.join(",") || "new",
+            eventSubtype: result.sourceType || null,
             keywordId: input.keywordId
           }
         })
@@ -805,6 +839,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         keywordId: keyword.id,
         reportEnabled,
         queryText: commonRun.searchContext.queryText,
+        queryTexts: commonRun.searchContext.queryTexts,
         keywords: commonRun.searchContext.keywords,
         presetNames: commonRun.searchContext.presetNames,
         scheduleId: options.scheduleId,
@@ -847,6 +882,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         items: reportItems,
         category: topic.category,
         queryText: commonRun.searchContext.queryText,
+        queryTexts: commonRun.searchContext.queryTexts,
         keywords: commonRun.searchContext.keywords,
         presetNames: commonRun.searchContext.presetNames,
         structuredSummary
@@ -932,6 +968,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       items: reportItems,
       category: topic.category,
       queryText: commonRun.searchContext.queryText,
+      queryTexts: commonRun.searchContext.queryTexts,
       keywords: commonRun.searchContext.keywords,
       presetNames: commonRun.searchContext.presetNames,
       structuredSummary

@@ -15,6 +15,7 @@ function normalizeTopicInput(body: {
   keywords?: unknown;
   excludeWords?: unknown;
   contentDirections?: unknown;
+  sourcePreference?: unknown;
   depth?: unknown;
   searchScope?: unknown;
   autoSummary?: unknown;
@@ -31,6 +32,9 @@ function normalizeTopicInput(body: {
   const contentDirections = Array.isArray(body.contentDirections)
     ? body.contentDirections.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean).slice(0, 6)
     : undefined;
+  const sourcePreference = body.sourcePreference === "官方优先" || body.sourcePreference === "媒体优先" || body.sourcePreference === "全网"
+    ? body.sourcePreference as "官方优先" | "媒体优先" | "全网"
+    : undefined;
   const depth = body.depth === "简短" || body.depth === "标准" || body.depth === "深度"
     ? body.depth as "简短" | "标准" | "深度"
     : undefined;
@@ -45,6 +49,7 @@ function normalizeTopicInput(body: {
     keywords: keywords.length ? keywords : title ? [title] : [],
     excludeWords,
     contentDirections,
+    sourcePreference,
     depth,
     searchScope,
     autoSummary: typeof body.autoSummary === "boolean" ? body.autoSummary : undefined
