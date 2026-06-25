@@ -51,6 +51,11 @@ type TopicLifecycle = "active" | "archived" | "deleted";
 type TopicMetadata = {
   lifecycle?: TopicLifecycle;
   keywords?: string[];
+  excludeWords?: string[];
+  contentDirections?: string[];
+  depth?: "简短" | "标准" | "深度";
+  searchScope?: "只搜索已有内容" | "允许全网搜索";
+  autoSummary?: boolean;
   userDescription?: string;
   archivedAt?: string;
   deletedAt?: string;
@@ -217,6 +222,10 @@ export function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle
     score: typeof item.score === "number" ? Math.round(item.score * 10) / 10 : item.importance === "high" ? 8.6 : 7.6,
     body: splitBody(item),
     tags: tags.length ? tags : ["资讯"],
+    url: item.url,
+    publishedAt: (item.publishedAt ?? item.createdAt).toISOString(),
+    credibilityLabel: item.credibilityLabel,
+    credibilityReason: item.credibilityReason,
     topicTitle: item.keyword?.name
   };
 }
@@ -695,6 +704,11 @@ export type TopicEditInput = {
   description?: string;
   category: string;
   keywords: string[];
+  excludeWords?: string[];
+  contentDirections?: string[];
+  depth?: "简短" | "标准" | "深度";
+  searchScope?: "只搜索已有内容" | "允许全网搜索";
+  autoSummary?: boolean;
 };
 
 export async function updateMainFlowTopic(id: string, input: TopicEditInput) {
@@ -717,6 +731,11 @@ export async function updateMainFlowTopic(id: string, input: TopicEditInput) {
         ...parsed.metadata,
         lifecycle: parsed.metadata.lifecycle ?? "active",
         keywords: input.keywords,
+        excludeWords: input.excludeWords ?? parsed.metadata.excludeWords,
+        contentDirections: input.contentDirections ?? parsed.metadata.contentDirections,
+        depth: input.depth ?? parsed.metadata.depth,
+        searchScope: input.searchScope ?? parsed.metadata.searchScope,
+        autoSummary: input.autoSummary ?? parsed.metadata.autoSummary,
         updatedVia: "main-flow"
       })
     },

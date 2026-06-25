@@ -312,6 +312,17 @@ function processSearchWithCounts(results: NormalizedSearchResult[], keywordName:
   };
 }
 
+function applyExcludeWords(results: EnrichedSearchResult[], excludeWords: string[]) {
+  if (!excludeWords.length) {
+    return results;
+  }
+
+  return results.filter((result) => {
+    const text = `${result.title} ${result.source} ${result.content} ${result.rawContent ?? ""}`.toLocaleLowerCase("zh-CN");
+    return !excludeWords.some((word) => text.includes(word.toLocaleLowerCase("zh-CN")));
+  });
+}
+
 async function runSearchWithQualityFallback(input: {
   keywordName: string;
   category: KeywordCategory;
@@ -426,6 +437,11 @@ async function saveSearchAndSummary(input: {
     description: searchContext.description,
     queryText: searchContext.queryText
   });
+  searchRun.processedResults = applyExcludeWords(searchRun.processedResults, searchContext.excludeWords);
+  searchRun.dedupedCount = searchRun.processedResults.length;
+  if (searchRun.processedResults.length === 0) {
+    throw new Error("搜索结果已被排除词过滤为空，请调整主题偏好后重试。");
+  }
   const now = new Date();
 
   const savedItems = await prisma.$transaction(async (tx) => {

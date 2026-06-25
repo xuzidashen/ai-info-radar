@@ -3,18 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BookmarkSimple,
-  Compass,
   Crosshair,
   House,
+  MagnifyingGlass,
+  SquaresFour,
   User
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 const navigation = [
   { href: "/", label: "首页", icon: House },
-  { href: "/discover", label: "发现", icon: Compass },
-  { href: "/saved", label: "收藏", icon: BookmarkSimple },
+  { href: "/search", label: "搜索", icon: MagnifyingGlass },
+  { href: "/topics", label: "主题", icon: SquaresFour },
   { href: "/profile", label: "我的", icon: User }
 ];
 

@@ -1,18 +1,67 @@
 import { categoryLabels, type InfoItemDTO, type KeywordCategory } from "@/lib/types";
-import type { MockInfoItemInput } from "@/lib/mockSearch";
+import type { StructuredSummary, SummaryContentType } from "@/lib/utils/summaryParser";
 
-type SummaryItem = Pick<InfoItemDTO, "title" | "source" | "summary" | "importance"> | MockInfoItemInput;
+type SummaryItem = {
+  title: string;
+  source: string;
+  summary: string;
+  importance: InfoItemDTO["importance"];
+  url?: string | null;
+  publishedAt?: string | Date | null;
+};
 
-function sourceDigest(items: SummaryItem[]): string {
-  return items
-    .slice(0, 5)
-    .map((item, index) => `${index + 1}. ${item.source}：${item.title}`)
-    .join("\n");
+function contentTypeFor(category: KeywordCategory): SummaryContentType {
+  if (category === "policy") return "policy";
+  if (category === "finance") return "financial_report";
+  if (category === "ai-tech") return "industry_update";
+  if (category === "study") return "general";
+  return "general";
 }
 
-function highSignal(items: SummaryItem[]): string {
-  const high = items.find((item) => item.importance === "high") ?? items[0];
-  return high ? `${high.title}。${high.summary}` : "暂无高优先级信号。";
+function formatDate(value: unknown) {
+  if (!value) return "未披露";
+  const date = new Date(value as string | Date);
+  return Number.isNaN(date.getTime()) ? "未披露" : date.toLocaleDateString("zh-CN");
+}
+
+function sourceUrl(item: SummaryItem) {
+  return "url" in item && typeof item.url === "string" ? item.url : undefined;
+}
+
+function firstItem(items: SummaryItem[]) {
+  return items.find((item) => item.importance === "high") ?? items[0];
+}
+
+function buildKeyDetails(category: KeywordCategory, item: SummaryItem | undefined) {
+  const title = item?.title ?? "未披露";
+  const summary = item?.summary ?? "现有来源不足，需要人工复核。";
+  const source = item?.source ?? "未披露";
+  const keyNumbers = summary.match(/(?:\d+(?:\.\d+)?%?|\d+(?:\.\d+)?\s*(?:万|亿|元|人|家|项|年|月|日|亿元|万元))/g)?.slice(0, 6).join("、") || "未披露";
+
+  if (category === "finance") {
+    return [
+      { label: "发布方/主体", value: source },
+      { label: "时间", value: formatDate("publishedAt" in (item ?? {}) ? item?.publishedAt : undefined) },
+      { label: "核心内容", value: `围绕“${title}”整理公开公告、产业链或经营变化。` },
+      { label: "关键数字", value: keyNumbers }
+    ];
+  }
+
+  if (category === "policy") {
+    return [
+      { label: "发布方/主体", value: source },
+      { label: "时间", value: formatDate("publishedAt" in (item ?? {}) ? item?.publishedAt : undefined) },
+      { label: "核心内容", value: summary.slice(0, 180) || "政策核心内容未披露。" },
+      { label: "关键数字", value: keyNumbers }
+    ];
+  }
+
+  return [
+    { label: "发布方/主体", value: source },
+    { label: "时间", value: formatDate("publishedAt" in (item ?? {}) ? item?.publishedAt : undefined) },
+    { label: "核心内容", value: summary.slice(0, 180) || "现有来源只提供了标题级信息。" },
+    { label: "关键数字", value: keyNumbers }
+  ];
 }
 
 export function generateMockSummary(keyword: {
@@ -20,120 +69,55 @@ export function generateMockSummary(keyword: {
   category: KeywordCategory;
   description?: string | null;
 }, items: SummaryItem[]): string {
-  const topic = `“${keyword.name}”`;
+  const topic = keyword.name;
   const category = categoryLabels[keyword.category];
-  const context = keyword.description ? `用户备注：${keyword.description}` : `当前分类：${category}`;
-  const digest = sourceDigest(items);
-  const signal = highSignal(items);
-
-  if (keyword.category === "finance") {
-    return `【今日新增信息】
-本次为 ${topic} 汇总 ${items.length} 条公开信息，重点覆盖公告、产业链和市场关注度变化。
-
-【核心变化】
-${signal}
-
-【短期影响】
-短期更适合作为舆情和公开信息跟踪线索，需要关注后续公告、监管口径和行业数据是否相互印证。
-
-【长期影响】
-长期影响取决于基本面、行业周期、技术路线和政策环境的连续变化，当前仅能作为观察清单。
-
-【风险提示】
-信息可能存在延迟、误读或来源偏差。以上内容仅为公开信息整理和辅助研究，不构成投资建议。
-
-【来源摘要】
-${digest}
-
-【备注】
-${context}`;
+  const lead = firstItem(items);
+  const leadSummary = lead?.summary || "现有来源不足，需要人工复核。";
+  const summary: StructuredSummary = {
+    contentType: contentTypeFor(keyword.category),
+    title: `${topic}：本次更新的事实摘要`,
+    overview: items.length
+      ? `本次围绕“${topic}”整理 ${items.length} 条公开来源，重点是${lead?.title ?? "最新变化"}。`.slice(0, 80)
+      : `“${topic}”当前来源不足，需要人工复核。`,
+    coreFacts: items.length
+      ? items.slice(0, 3).map((item, index) => `${index + 1}. ${item.source} 提到：${item.title}；${item.summary || "摘要未披露"}`.slice(0, 220))
+      : ["现有来源不足以形成可验证事实。"],
+    keyDetails: buildKeyDetails(keyword.category, lead),
+    impactTargets: keyword.category === "policy"
+      ? ["政策适用对象", "相关申报主体", "后续执行部门"]
+      : keyword.category === "finance"
+        ? ["相关公司", "产业链上下游", "公开信息研究者"]
+        : [category, "关注该主题的用户"],
+    whyItMatters: [
+      `这些来源都与用户关注的“${topic}”直接相关。`,
+      "雷达保留原始链接，便于后续复核和追踪变化。"
+    ],
+    followUp: [
+      "关注官方文件、公告或原始来源是否更新。",
+      "复核后续是否出现新的时间节点、金额、指标或执行细则。"
+    ],
+    uncertainties: keyword.category === "finance"
+      ? ["公开来源可能存在延迟或口径差异。", "以上内容仅为公开信息整理和辅助研究，不构成投资建议。"]
+      : ["部分来源可能只提供摘要，需要打开原帖复核细节。"],
+    sources: items.slice(0, 5).map((item) => ({
+      title: item.title,
+      url: sourceUrl(item),
+      type: "unknown",
+      note: `${item.source} 提供了与“${topic}”相关的公开线索。`
+    })),
+    keyChanges: [],
+    risks: [],
+    sourceNotes: []
+  };
+  summary.keyChanges = summary.coreFacts.map((fact, index) => ({ title: `核心事实 ${index + 1}`, detail: fact, confidence: "medium" as const }));
+  summary.risks = summary.uncertainties;
+  summary.sourceNotes = summary.sources.map((item) => ({ source: item.title, note: item.note, url: item.url }));
+  if (keyword.description) {
+    summary.followUp.push(`结合用户备注继续复核：${keyword.description.slice(0, 80)}`);
   }
-
-  if (keyword.category === "policy") {
-    return `【事件背景】
-本次围绕 ${topic} 汇总报名、政策文件、地方公告和备考相关公开信息。
-
-【政策要点】
-${signal}
-
-【申论可用角度】
-可从治理能力、公共服务、公平效率、基层执行和数字化管理等角度提炼表达。
-
-【官方表达】
-建议积累“稳步推进”“精准施策”“优化服务”“规范流程”“提升质效”等规范表述。
-
-【可积累素材】
-将关键时间、发布主体、适用对象和执行要求整理成素材卡，方便后续复盘。
-
-【来源摘要】
-${digest}
-
-【备注】
-${context}`;
+  if (!items.length) {
+    summary.sources = [];
+    summary.sourceNotes = [];
   }
-
-  if (keyword.category === "ai-tech") {
-    return `【最新更新】
-本次围绕 ${topic} 汇总产品、模型、开发者工具和社区讨论的新变化。
-
-【功能变化】
-${signal}
-
-【对普通用户的影响】
-普通用户可以重点关注使用门槛、成本变化、稳定性和实际场景效率。
-
-【对开发者的影响】
-开发者应关注 API 兼容性、模型能力边界、调用成本、文档变化和迁移风险。
-
-【是否值得关注】
-值得继续观察；如果当前使用 mock 简报，需要接入真实搜索和 AI 总结后再提升判断精度。
-
-【来源摘要】
-${digest}
-
-【备注】
-${context}`;
-  }
-
-  if (keyword.category === "study") {
-    return `【资料变化】
-本次围绕 ${topic} 汇总资料、任务、提交节点和学习计划相关信息。
-
-【任务提醒】
-${signal}
-
-【可执行动作】
-建议立刻完成资料归档、时间表更新、关键任务拆解和责任人确认。
-
-【风险点】
-注意报名截止、材料版本、提交格式、组队状态和评审规则变更。
-
-【下一步建议】
-把今天新增信息转成待办清单，并在下一次生成简报时复核是否有节点变化。
-
-【备注】
-${context}`;
-  }
-
-  return `【信息概览】
-本次围绕 ${topic} 生成 ${items.length} 条信息卡片。
-
-【重要变化】
-${signal}
-
-【可能影响】
-当前信息适合作为个人跟踪线索，建议继续观察来源是否更新。
-
-【风险点】
-当前版本可能使用 mock 搜索和 mock 总结，真实判断需结合外部来源验证。
-
-【下一步建议】
-将高优先级信息转成待办或复核清单。
-
-【来源摘要】
-${digest}
-
-【备注】
-${context}`;
+  return JSON.stringify(summary);
 }
-

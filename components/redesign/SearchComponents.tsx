@@ -135,7 +135,7 @@ export function SearchExperience({ results }: { results: AppSearchResults }) {
             <GroupTitle icon={Globe} title="全网结果" count={webResults.length} />
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={summarizeWebResults} disabled={summaryLoading} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><Sparkle size={16} />{summaryLoading ? "生成中" : "基于结果生成摘要"}</button>
-              <Link href={`/topics/new?title=${encodeURIComponent(query)}&keywords=${encodeURIComponent(query)}`} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><FolderSimple size={16} />创建关注主题</Link>
+              <Link href={`/topics/new?title=${encodeURIComponent(query)}&keywords=${encodeURIComponent(query)}`} className="app-button-secondary min-h-10 px-3 py-2 text-xs"><FolderSimple size={16} />加入/创建主题</Link>
             </div>
           </div>
           <div className="mt-3 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">
@@ -149,7 +149,7 @@ export function SearchExperience({ results }: { results: AppSearchResults }) {
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <button type="button" onClick={() => saveResult(result)} disabled={savedUrls.includes(result.url)} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><BookmarkSimple size={15} weight={savedUrls.includes(result.url) ? "fill" : "regular"} />{savedUrls.includes(result.url) ? "已保存" : "保存"}</button>
-                    <Link href={`/topics/new?title=${encodeURIComponent(query)}&keywords=${encodeURIComponent([query, result.title].join("，"))}`} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><FolderSimple size={15} />加入主题</Link>
+                    <Link href={`/topics/new?title=${encodeURIComponent(query)}&keywords=${encodeURIComponent([query, result.title].join("，"))}`} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><FolderSimple size={15} />加入/创建主题</Link>
                     <button type="button" onClick={() => summarizeOneResult(result)} disabled={summaryLoading} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><Sparkle size={15} />摘要</button>
                   </div>
                 </div>

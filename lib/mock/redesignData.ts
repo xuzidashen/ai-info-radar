@@ -10,8 +10,12 @@ export type RedesignArticle = {
   score: number;
   body: string[];
   tags: string[];
+  url?: string;
   topicId?: string;
   topicTitle?: string;
+  publishedAt?: string;
+  credibilityLabel?: string | null;
+  credibilityReason?: string | null;
 };
 
 export type FollowTopic = {

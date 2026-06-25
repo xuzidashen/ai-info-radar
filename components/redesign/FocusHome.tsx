@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Clock, FileText, FolderSimple, Plus, Sparkle } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, ArrowSquareOut, BookmarkSimple, CheckCircle, Clock, FileText, FolderSimple, Plus, Sparkle } from "@phosphor-icons/react/dist/ssr";
 
 import { UnreadBadge } from "@/components/redesign/ReadState";
 import type { FollowTopic, Insight, RedesignArticle } from "@/lib/mock/redesignData";
@@ -35,6 +35,27 @@ export function FocusActions() {
   );
 }
 
+export function FocusFilters() {
+  const filters = ["全部", "未读", "有更新", "高价值", "已收藏", "按主题"];
+  return (
+    <section className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
+      <div className="flex min-w-max gap-2" role="tablist" aria-label="关注动态筛选">
+        {filters.map((item, index) => (
+          <button
+            key={item}
+            type="button"
+            role="tab"
+            aria-selected={index === 0}
+            className={`min-h-10 rounded-lg px-4 text-sm font-black ${index === 0 ? "bg-[var(--app-primary)] text-white" : "border border-[var(--app-line)] bg-[var(--app-surface)] text-[var(--app-text-muted)]"}`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function FollowedTopics({ topics }: { topics: FollowTopic[] }) {
   if (!topics.length) {
     return <section className="rounded-lg border border-dashed border-[var(--app-line)] bg-[var(--app-surface)] p-8 text-center"><FolderSimple size={30} className="mx-auto text-[var(--app-text-muted)]" /><h2 className="mt-3 text-lg font-black">还没有关注主题</h2><p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">先创建一个你想持续追踪的话题。</p><Link href="/topics/new" className="app-button mt-5"><Plus size={17} />创建主题</Link></section>;
@@ -54,7 +75,30 @@ export function TopicActivity({ articles }: { articles: RedesignArticle[] }) {
   return (
     <section>
       <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black sm:text-xl">我的关注动态</h2><Link href="/search" className="text-sm font-black text-[var(--app-primary)]">搜索已有内容</Link></div>
-      {articles.length ? <div className="mt-4 divide-y divide-[var(--app-line)] border-y border-[var(--app-line)]">{articles.map((article) => <Link key={article.id} href={`/articles/${article.id}`} className="block py-4 hover:text-[var(--app-primary)]"><div className="flex flex-wrap items-center gap-2"><span className="app-chip text-[var(--app-primary)]">{article.topicTitle || article.category}</span>{article.tags.slice(0, 2).map((tag) => <span key={tag} className="app-chip">{tag}</span>)}</div><div className="mt-2 flex flex-wrap items-center gap-2"><h3 className="text-base font-black leading-6 sm:text-lg">{article.title}</h3><UnreadBadge kind="article" id={article.id} /></div><p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{article.excerpt}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-[var(--app-text-muted)]"><span>{article.source}</span><span>{article.time}</span><span>{article.score.toFixed(1)} 分</span></div></Link>)}</div> : <p className="mt-4 rounded-lg border border-dashed border-[var(--app-line)] p-6 text-sm font-semibold text-[var(--app-text-muted)]">还没有主题动态。进入主题并运行一次“立即更新”后，最新内容会出现在这里。</p>}
+      {articles.length ? <div className="mt-4 grid gap-3">{articles.map((article) => (
+        <article key={article.id} className="rounded-lg border border-[var(--app-line)] bg-[var(--app-surface)] p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="app-chip text-[var(--app-primary)]">{article.topicTitle || article.category}</span>
+            {article.tags.slice(0, 2).map((tag) => <span key={tag} className="app-chip">{tag}</span>)}
+            <UnreadBadge kind="article" id={article.id} />
+          </div>
+          <Link href={`/articles/${article.id}`} className="mt-3 block hover:text-[var(--app-primary)]">
+            <h3 className="text-base font-black leading-6 sm:text-lg">{article.title}</h3>
+            <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">AI 速读：{article.excerpt}</p>
+          </Link>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-[var(--app-text-muted)]">
+            <span>来源：{article.source}</span>
+            <span>时间：{article.time}</span>
+            <span>{article.score.toFixed(1)} 分</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {article.url ? <a href={article.url} target="_blank" rel="noreferrer" className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><ArrowSquareOut size={15} />原帖</a> : null}
+            <Link href={`/articles/${article.id}`} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><Sparkle size={15} />摘要</Link>
+            <button type="button" className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><BookmarkSimple size={15} />收藏</button>
+            <Link href={`/articles/${article.id}`} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><CheckCircle size={15} />标记已读</Link>
+          </div>
+        </article>
+      ))}</div> : <p className="mt-4 rounded-lg border border-dashed border-[var(--app-line)] p-6 text-sm font-semibold text-[var(--app-text-muted)]">还没有主题动态。进入主题并运行一次“立即更新”后，最新内容会出现在这里。</p>}
     </section>
   );
 }

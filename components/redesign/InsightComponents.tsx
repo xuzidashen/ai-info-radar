@@ -23,14 +23,36 @@ export function InsightList({ insights }: { insights: Insight[] }) {
 }
 
 function structuredInsight(insight: Insight): StructuredSummary {
+  const sourceNotes = insight.sourceNotes ?? insight.references.map((item) => ({ source: item.source, note: item.note || item.title, url: item.url }));
+  const coreFacts = insight.keyChanges?.length
+    ? insight.keyChanges.map((item) => `${item.title}：${item.detail}`)
+    : insight.points.slice(0, 3);
   return {
+    contentType: "general",
+    title: insight.title,
     overview: insight.summary,
+    coreFacts: coreFacts.length ? coreFacts : [insight.summary],
+    keyDetails: [
+      { label: "发布方/主体", value: sourceNotes[0]?.source ?? "未披露" },
+      { label: "时间", value: insight.generatedAt },
+      { label: "核心内容", value: coreFacts[0] ?? insight.summary },
+      { label: "关键数字", value: "未披露" }
+    ],
+    impactTargets: insight.tags.slice(0, 5),
     keyChanges: insight.keyChanges?.length
       ? insight.keyChanges
       : insight.points.map((point, index) => ({ title: `重要变化 ${index + 1}`, detail: point, confidence: "medium" as const })),
     whyItMatters: insight.whyItMatters?.length ? insight.whyItMatters : ["这些变化会影响该主题后续的判断依据、关注优先级和行动节奏。"],
+    followUp: ["继续关注高可信来源是否更新。", "复核后续是否出现新的时间节点、数字或官方说明。"],
+    uncertainties: insight.risks?.length ? insight.risks : ["公开信息可能存在延迟，重要判断仍需结合后续来源验证。"],
+    sources: sourceNotes.map((item) => ({
+      title: item.source,
+      url: item.url,
+      type: "unknown" as const,
+      note: item.note
+    })),
     risks: insight.risks?.length ? insight.risks : ["公开信息可能存在延迟，重要判断仍需结合后续来源验证。"],
-    sourceNotes: insight.sourceNotes ?? insight.references.map((item) => ({ source: item.source, note: item.note || item.title, url: item.url }))
+    sourceNotes
   };
 }
 

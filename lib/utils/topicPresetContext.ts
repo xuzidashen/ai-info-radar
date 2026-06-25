@@ -22,6 +22,10 @@ export type TopicPresetContext = {
 export type TopicSearchContext = {
   primaryKeyword: string;
   keywords: string[];
+  excludeWords: string[];
+  contentDirections: string[];
+  depth?: string;
+  searchScope?: string;
   presetNames: string[];
   queryTemplates: string[];
   queryText: string;
@@ -31,6 +35,15 @@ export type TopicSearchContext = {
 
 const contextStart = "[[AI_RADAR_TOPIC_CONTEXT]]";
 const contextEnd = "[[/AI_RADAR_TOPIC_CONTEXT]]";
+const preferenceMarker = "[[RADAR_TOPIC_PREFS]]";
+
+type TopicPreferences = {
+  excludeWords: string[];
+  contentDirections: string[];
+  depth?: string;
+  searchScope?: string;
+  autoSummary?: boolean;
+};
 
 function unique(values: string[], limit = 12) {
   const seen = new Set<string>();
@@ -53,6 +66,36 @@ function unique(values: string[], limit = 12) {
 
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function parseTopicPreferences(description?: string | null): TopicPreferences {
+  if (!description) {
+    return { excludeWords: [], contentDirections: [] };
+  }
+
+  const markerIndex = description.indexOf(preferenceMarker);
+  if (markerIndex < 0) {
+    return { excludeWords: [], contentDirections: [] };
+  }
+
+  try {
+    const raw = description.slice(markerIndex + preferenceMarker.length).trim();
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      excludeWords: unique(asStringArray(parsed.excludeWords), 12),
+      contentDirections: unique(asStringArray(parsed.contentDirections), 6),
+      depth: typeof parsed.depth === "string" ? parsed.depth : undefined,
+      searchScope: typeof parsed.searchScope === "string" ? parsed.searchScope : undefined,
+      autoSummary: typeof parsed.autoSummary === "boolean" ? parsed.autoSummary : undefined
+    };
+  } catch {
+    return { excludeWords: [], contentDirections: [] };
+  }
+}
+
+function stripTopicPreferences(description: string) {
+  const markerIndex = description.indexOf(preferenceMarker);
+  return markerIndex >= 0 ? description.slice(0, markerIndex).trim() : description;
 }
 
 export function toTopicPresetContext(input: {
@@ -186,6 +229,7 @@ export function buildTopicSearchContext(topic: {
   description?: string | null;
 }): TopicSearchContext {
   const context = parseTopicPresetContext(topic.description);
+  const preferences = parseTopicPreferences(topic.description);
   const keywords = unique([topic.name, ...(context?.keywords ?? [])], 12);
   const presetNames = context?.presets.map((preset) => preset.name) ?? [];
   const queryTemplates = unique(
@@ -196,9 +240,9 @@ export function buildTopicSearchContext(topic: {
   );
   const queryText = (
     queryTemplates[0] ||
-    unique([topic.name, ...keywords.slice(1, 3), topic.category], 4).join(" ")
+    unique([topic.name, ...keywords.slice(1, 3), ...preferences.contentDirections.slice(0, 2), topic.category], 6).join(" ")
   ).slice(0, 180);
-  let readableDescription = topic.description ?? "";
+  let readableDescription = stripTopicPreferences(topic.description ?? "");
   const start = readableDescription.indexOf(contextStart);
   const end = readableDescription.indexOf(contextEnd);
   if (start >= 0 && end > start) {
@@ -207,12 +251,20 @@ export function buildTopicSearchContext(topic: {
   const descriptionLines = [
     readableDescription.trim(),
     presetNames.length ? `已选信息源预设：${presetNames.join("、")}` : "",
-    queryTemplates.length ? `推荐查询：${queryTemplates.join("；")}` : ""
+    queryTemplates.length ? `推荐查询：${queryTemplates.join("；")}` : "",
+    preferences.excludeWords.length ? `排除词：${preferences.excludeWords.join("、")}` : "",
+    preferences.contentDirections.length ? `内容方向：${preferences.contentDirections.join("、")}` : "",
+    preferences.depth ? `内容深度：${preferences.depth}` : "",
+    preferences.searchScope ? `搜索范围：${preferences.searchScope}` : ""
   ].filter(Boolean);
 
   return {
     primaryKeyword: topic.name,
     keywords,
+    excludeWords: preferences.excludeWords,
+    contentDirections: preferences.contentDirections,
+    depth: preferences.depth,
+    searchScope: preferences.searchScope,
     presetNames,
     queryTemplates,
     queryText,

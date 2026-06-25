@@ -13,6 +13,11 @@ function normalizeTopicInput(body: {
   description?: unknown;
   category?: unknown;
   keywords?: unknown;
+  excludeWords?: unknown;
+  contentDirections?: unknown;
+  depth?: unknown;
+  searchScope?: unknown;
+  autoSummary?: unknown;
 }) {
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const description = typeof body.description === "string" ? body.description.trim() : "";
@@ -20,12 +25,29 @@ function normalizeTopicInput(body: {
   const keywords = Array.isArray(body.keywords)
     ? body.keywords.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean).slice(0, 8)
     : [];
+  const excludeWords = Array.isArray(body.excludeWords)
+    ? body.excludeWords.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean).slice(0, 12)
+    : undefined;
+  const contentDirections = Array.isArray(body.contentDirections)
+    ? body.contentDirections.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean).slice(0, 6)
+    : undefined;
+  const depth = body.depth === "简短" || body.depth === "标准" || body.depth === "深度"
+    ? body.depth as "简短" | "标准" | "深度"
+    : undefined;
+  const searchScope = body.searchScope === "只搜索已有内容" || body.searchScope === "允许全网搜索"
+    ? body.searchScope as "只搜索已有内容" | "允许全网搜索"
+    : undefined;
 
   return {
     title,
     description,
     category,
-    keywords: keywords.length ? keywords : title ? [title] : []
+    keywords: keywords.length ? keywords : title ? [title] : [],
+    excludeWords,
+    contentDirections,
+    depth,
+    searchScope,
+    autoSummary: typeof body.autoSummary === "boolean" ? body.autoSummary : undefined
   };
 }
 

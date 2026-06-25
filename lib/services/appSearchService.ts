@@ -40,7 +40,12 @@ export async function searchAppContent(rawQuery?: string): Promise<AppSearchResu
           { title: { contains: query, mode: "insensitive" } },
           { summary: { contains: query, mode: "insensitive" } },
           { source: { contains: query, mode: "insensitive" } },
-          { rawContent: { contains: query, mode: "insensitive" } }
+          { rawContent: { contains: query, mode: "insensitive" } },
+          { eventType: { contains: query, mode: "insensitive" } },
+          { eventSubtype: { contains: query, mode: "insensitive" } },
+          { relatedCompanies: { contains: query, mode: "insensitive" } },
+          { relatedIndustries: { contains: query, mode: "insensitive" } },
+          { credibilityReason: { contains: query, mode: "insensitive" } }
         ] },
         orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
         take: 12,

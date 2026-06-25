@@ -137,7 +137,7 @@ function isRunningStatus(status: RunStatus) {
 function runStatusText(status: RunStatus, idleText: string, doneText: string, errorText?: string) {
   if (status === "searching") return "正在搜索最新信息";
   if (status === "filtering") return "正在筛选有效内容";
-  if (status === "summarizing") return "正在生成精简摘要";
+  if (status === "summarizing") return "正在生成事实摘要";
   if (status === "reporting") return "正在生成分析结果";
   if (status === "saving") return "正在保存分析结果";
   if (status === "done") return doneText;
@@ -608,7 +608,17 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
         searchScope,
         autoSummary
       };
-      const input = { title: title.trim(), description: buildDescriptionWithPreferences(description.trim(), preferences), category, keywords: splitKeywords(keywords) };
+      const input = {
+        title: title.trim(),
+        description: buildDescriptionWithPreferences(description.trim(), preferences),
+        category,
+        keywords: splitKeywords(keywords),
+        excludeWords: preferences.excludeWords,
+        contentDirections: preferences.contentDirections,
+        depth: preferences.depth,
+        searchScope: preferences.searchScope,
+        autoSummary: preferences.autoSummary
+      };
       if (topic.id.startsWith("custom-")) {
         saveStoredTopic({ ...topic, ...input, updatedAt: "刚刚保存", createdAt: new Date().toISOString() });
       } else {

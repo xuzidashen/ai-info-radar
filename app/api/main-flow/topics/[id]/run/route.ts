@@ -81,7 +81,7 @@ export async function POST(_request: Request, context: RouteContext) {
         factorProvider: "mock",
         fallbackUsed: true
       },
-      stages: ["正在搜索最新信息", "找到候选内容", "正在筛选有效内容", "正在生成精简摘要", "正在保存分析结果", "已完成本次更新"]
+      stages: ["正在搜索最新信息", "找到候选内容", "正在筛选有效内容", "正在生成事实摘要", "正在保存分析结果", "已完成本次更新"]
     });
   }
 
@@ -108,7 +108,7 @@ export async function POST(_request: Request, context: RouteContext) {
         linkageProvider: result.runLog.linkageProvider,
         fallbackUsed: result.runLog.fallbackUsed
       },
-      stages: ["正在搜索最新信息", `找到 ${result.runLog.rawResultCount} 条候选内容`, "正在筛选有效内容", "正在生成精简摘要", "正在保存分析结果", "已完成本次更新"]
+      stages: ["正在搜索最新信息", `找到 ${result.runLog.rawResultCount} 条候选内容`, "正在筛选有效内容", "正在生成事实摘要", "正在保存分析结果", "已完成本次更新"]
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "更新失败，请稍后再试。";
