@@ -19,6 +19,7 @@ function normalizeTopicInput(body: {
   depth?: unknown;
   searchScope?: unknown;
   autoSummary?: unknown;
+  dailyAutoCheck?: unknown;
 }) {
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const description = typeof body.description === "string" ? body.description.trim() : "";
@@ -52,7 +53,8 @@ function normalizeTopicInput(body: {
     sourcePreference,
     depth,
     searchScope,
-    autoSummary: typeof body.autoSummary === "boolean" ? body.autoSummary : undefined
+    autoSummary: typeof body.autoSummary === "boolean" ? body.autoSummary : undefined,
+    dailyAutoCheck: typeof body.dailyAutoCheck === "boolean" ? body.dailyAutoCheck : undefined
   };
 }
 

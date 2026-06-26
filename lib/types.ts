@@ -226,6 +226,8 @@ export type InfoItemDTO = {
   credibilityReason: string | null;
   eventType: string | null;
   eventSubtype: string | null;
+  changeType: string | null;
+  changeReason: string | null;
   sentimentScore: number | null;
   impactScore: number | null;
   riskScore: number | null;

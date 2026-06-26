@@ -4,6 +4,91 @@ import { ArrowRight, ArrowSquareOut, BookmarkSimple, CheckCircle, Clock, FileTex
 import { UnreadBadge } from "@/components/redesign/ReadState";
 import type { FollowTopic, Insight, RedesignArticle } from "@/lib/mock/redesignData";
 
+
+
+export function DailyBriefing({
+  stats,
+  articles
+}: {
+  stats: { todayItemCount: number; updatedTopicCount?: number; highTrustCount?: number; needsReviewCount?: number; lastUpdated: string };
+  articles: RedesignArticle[];
+}) {
+  const topArticles = articles
+    .filter((article) => article.topicId || article.topicTitle)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 3);
+  const tiles = [
+    { label: "\u4eca\u65e5\u65b0\u589e", value: stats.todayItemCount, tone: "text-[#0f8b62] bg-[#e7f7f1]" },
+    { label: "\u6709\u66f4\u65b0\u4e3b\u9898", value: stats.updatedTopicCount ?? 0, tone: "text-[#2563eb] bg-[#e9f0ff]" },
+    { label: "\u9ad8\u53ef\u4fe1", value: stats.highTrustCount ?? 0, tone: "text-[#0f8b62] bg-[#e7f7f1]" },
+    { label: "\u9700\u590d\u6838", value: stats.needsReviewCount ?? 0, tone: "text-[#b45309] bg-[#fff4df]" }
+  ];
+
+  return (
+    <section className="rounded-lg border border-[#c9ddff] bg-gradient-to-br from-[#f6f9ff] to-white p-5 shadow-[0_18px_60px_rgba(37,99,235,0.08)] sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <span className="app-chip text-[var(--app-primary)]">{"\u4eca\u65e5\u60c5\u62a5\u7b80\u62a5"}</span>
+          <h2 className="mt-3 text-2xl font-black leading-tight">{"\u53ea\u770b\u5173\u6ce8\u4e3b\u9898\u7684\u65b0\u53d8\u5316"}</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">
+            {"\u6700\u8fd1\u66f4\u65b0\uff1a"}{stats.lastUpdated}{"\u3002\u81ea\u52a8\u68c0\u67e5\u9ed8\u8ba4\u5173\u95ed\uff0c\u624b\u52a8\u66f4\u65b0\u4f1a\u6d88\u8017\u641c\u7d22\u989d\u5ea6\u3002"}
+          </p>
+        </div>
+        <Link href="/topics" className="app-button shrink-0">{"\u66f4\u65b0\u5173\u6ce8\u4e3b\u9898"}<ArrowRight size={16} /></Link>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {tiles.map((tile) => (
+          <div key={tile.label} className={`rounded-lg px-4 py-3 ${tile.tone}`}>
+            <strong className="block text-2xl font-black">{tile.value}</strong>
+            <span className="mt-1 block text-xs font-black">{tile.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {topArticles.length ? (
+        <div className="mt-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-black">{"\u4eca\u65e5\u6700\u503c\u5f97\u770b"}</h3>
+            <Link href="/search" className="text-sm font-black text-[var(--app-primary)]">{"\u641c\u7d22\u5df2\u6709\u5185\u5bb9"}</Link>
+          </div>
+          {topArticles.map((article) => (
+            <article key={article.id} className="rounded-lg border border-[var(--app-line)] bg-white/82 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="app-chip text-[var(--app-primary)]">{article.topicTitle || article.category}</span>
+                {article.credibilityLabel ? (
+                  <span className={`app-chip ${article.credibilityLabel === "high" ? "text-[#0f8b62]" : article.credibilityLabel === "low" ? "text-[#b45309]" : ""}`}>
+                    {"\u53ef\u4fe1\u5ea6 "}{article.credibilityLabel}
+                  </span>
+                ) : null}
+                {article.changeType ? <span className="app-chip text-[#6d5bd0]">{article.changeType}</span> : null}
+              </div>
+              <Link href={`/articles/${article.id}`} className="mt-3 block hover:text-[var(--app-primary)]">
+                <h3 className="line-clamp-2 text-base font-black leading-6">{article.title}</h3>
+                <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-[var(--app-text-muted)]">{article.excerpt}</p>
+              </Link>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-[var(--app-text-muted)]">
+                <span>{"\u6765\u6e90\uff1a"}{article.source || "\u672a\u62ab\u9732"}</span>
+                <span>{article.score.toFixed(1)}{" \u5206"}</span>
+                <span>{article.time}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {article.url ? <a href={article.url} target="_blank" rel="noreferrer" className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><ArrowSquareOut size={15} />{"\u539f\u5e16\u94fe\u63a5"}</a> : null}
+                <Link href={`/articles/${article.id}`} className="app-button-secondary min-h-9 px-2.5 py-1.5 text-xs"><Sparkle size={15} />{"\u67e5\u770b\u6458\u8981"}</Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-lg border border-dashed border-[#c9ddff] bg-white/70 p-6 text-center">
+          <p className="font-black">{"\u4eca\u5929\u8fd8\u6ca1\u6709\u53d1\u73b0\u660e\u663e\u53d8\u5316"}</p>
+          <p className="mt-2 text-sm font-semibold text-[var(--app-text-muted)]">{"\u53ef\u4ee5\u624b\u52a8\u66f4\u65b0\u5173\u6ce8\u4e3b\u9898\uff1b\u5982\u679c\u6ca1\u6709\u65b0\u5185\u5bb9\uff0c\u7cfb\u7edf\u4e0d\u4f1a\u751f\u6210\u65e0\u610f\u4e49\u6458\u8981\u3002"}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function AttentionOverview({ stats }: { stats: { topicCount: number; todayItemCount: number; insightCount: number; lastUpdated: string; updatedTopicCount?: number; highTrustCount?: number; needsReviewCount?: number } }) {
   const items = [
     { label: "关注主题", value: stats.topicCount, icon: FolderSimple, tone: "text-[#2563eb] bg-[#e9f0ff]" },

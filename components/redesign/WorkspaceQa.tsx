@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CheckCircle, Database, Flask, Lightning, ShieldCheck, WarningCircle } from "@phosphor-icons/react";
+import { ArrowLeft, CheckCircle, ClockCounterClockwise, Database, FileText, Flask, Lightning, ShieldCheck, WarningCircle } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 
 import { getTopicCooldown, markTopicRun, recordUsage } from "@/components/redesign/UsageComponents";
@@ -65,6 +65,7 @@ export function WorkspaceQa({
   const [results, setResults] = useState<QaResult[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [qaCooldown, setQaCooldown] = useState(0);
 
   useEffect(() => {
     async function loadStatus() {
@@ -86,6 +87,12 @@ export function WorkspaceQa({
       window.removeEventListener("ai-radar-usage-change", sync);
     };
   }, [firstTopic]);
+
+  useEffect(() => {
+    if (qaCooldown <= 0) return;
+    const timer = window.setInterval(() => setQaCooldown((current) => Math.max(0, current - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [qaCooldown]);
 
   const providerRows = useMemo(() => {
     if (!providerStatus) return [];
@@ -156,6 +163,52 @@ export function WorkspaceQa({
     }
   }
 
+  function testLocalDailyBriefing() {
+    const updatedTopics = topics.filter((topic) => (topic.todayItemCount ?? 0) > 0 || topic.lastRunState === "success");
+    const needsReviewTopics = topics.filter((topic) => (topic.needsReviewCount ?? 0) > 0);
+    pushResult({
+      label: "\u4eca\u65e5\u60c5\u62a5\u7b80\u62a5 / \u79fb\u52a8\u5165\u53e3\u68c0\u67e5",
+      ok: true,
+      detail: `\u5173\u6ce8\u4e3b\u9898 ${topics.length} \u4e2a\uff0c\u6709\u66f4\u65b0 ${updatedTopics.length} \u4e2a\uff0c\u9700\u590d\u6838\u4e3b\u9898 ${needsReviewTopics.length} \u4e2a\u3002`,
+      meta: {
+        updatedTopics: updatedTopics.slice(0, 5).map((topic) => ({ title: topic.title, todayItemCount: topic.todayItemCount, unreadCount: topic.unreadCount, lastRunState: topic.lastRunState })),
+        mobileLinks: ["/", "/topics", "/search", "/profile", "/workspace/qa"]
+      }
+    });
+  }
+
+  function testChangeLabels() {
+    const labels = ["new", "update", "duplicate", "stale", "important_change", "low_signal", "needs_review"];
+    const topicHasStatus = topics.some((topic) => typeof topic.highTrustCount === "number" || typeof topic.needsReviewCount === "number");
+    pushResult({
+      label: "\u53d8\u5316\u68c0\u6d4b\u6807\u7b7e\u68c0\u67e5",
+      ok: topicHasStatus,
+      detail: topicHasStatus ? "\u4e3b\u9898\u72b6\u6001\u5df2\u5305\u542b\u9ad8\u53ef\u4fe1\u548c\u9700\u590d\u6838\u8ba1\u6570\uff1b\u8fd0\u884c\u540e\u5185\u5bb9\u4f1a\u6807\u8bb0\u65b0\u3001\u8865\u5145\u3001\u65e7\u95fb\u3001\u9ad8\u4ef7\u503c\u3001\u9700\u590d\u6838\u7b49\u7c7b\u578b\u3002" : "\u5f53\u524d\u4e3b\u9898\u8fd8\u6ca1\u6709\u72b6\u6001\u7edf\u8ba1\uff0c\u5148\u8fd0\u884c\u4e00\u6b21\u4e3b\u9898\u66f4\u65b0\u3002",
+      meta: { labels, topicStatusReady: topicHasStatus }
+    });
+  }
+
+  async function testDailyRefresh() {
+    if (qaCooldown > 0) return;
+    setLoading("daily-refresh");
+    setQaCooldown(60);
+    try {
+      const response = await fetch("/api/main-flow/daily-refresh", { method: "POST" });
+      const data = await response.json().catch(() => ({})) as { total?: number; ran?: number; skipped?: number; successCount?: number; failedCount?: number; error?: string; warning?: string; results?: unknown[] };
+      if (!response.ok) throw new Error(data.error || "\u6bcf\u65e5\u81ea\u52a8\u68c0\u67e5 API \u6d4b\u8bd5\u5931\u8d25\u3002\u8bf7\u786e\u8ba4\u5185\u90e8 secret \u8bf7\u6c42\u5934\u7b56\u7565\uff0c\u5207\u52ff\u5728\u524d\u7aef\u66b4\u9732\u771f\u5b9e secret\u3002");
+      pushResult({
+        label: "\u6bcf\u65e5\u81ea\u52a8\u68c0\u67e5 API",
+        ok: true,
+        detail: `\u81ea\u52a8\u68c0\u67e5\u4e3b\u9898 ${data.total ?? 0} \u4e2a\uff0c\u6267\u884c ${data.ran ?? 0} \u4e2a\uff0c\u8df3\u8fc7 ${data.skipped ?? 0} \u4e2a\u3002`,
+        meta: { total: data.total, ran: data.ran, skipped: data.skipped, successCount: data.successCount, failedCount: data.failedCount, warning: data.warning, results: data.results }
+      });
+    } catch (error) {
+      pushResult({ label: "\u6bcf\u65e5\u81ea\u52a8\u68c0\u67e5 API", ok: false, detail: error instanceof Error ? error.message : "\u6bcf\u65e5\u81ea\u52a8\u68c0\u67e5 API \u6d4b\u8bd5\u5931\u8d25" });
+    } finally {
+      setLoading(null);
+    }
+  }
+
   async function testTopicRun() {
     if (!firstTopic || cooldown > 0) return;
     setLoading("topic-run");
@@ -168,6 +221,8 @@ export function WorkspaceQa({
         candidateCount?: number;
         insightHref?: string;
         provider?: { searchProvider?: string; summaryProvider?: string; fallbackUsed?: boolean };
+        noChange?: boolean;
+        overview?: string;
         error?: string;
       };
       if (!response.ok) throw new Error(data.error || "完整主题更新测试失败");
@@ -175,9 +230,9 @@ export function WorkspaceQa({
       if (data.provider?.summaryProvider === "deepseek") recordUsage("deepseek");
       pushResult({
         label: "完整主题更新流程",
-        ok: Boolean((data.itemCount ?? 0) > 0 || (data.reportCount ?? 0) > 0),
-        detail: `候选 ${data.candidateCount ?? 0} 条，保存 ${data.itemCount ?? 0} 条，报告 ${data.reportCount ?? 0} 条。`,
-        meta: { topic: firstTopic.title, insightHref: data.insightHref, provider: data.provider }
+        ok: Boolean(data.noChange || (data.itemCount ?? 0) > 0 || (data.reportCount ?? 0) > 0),
+        detail: data.noChange ? `\u5019\u9009 ${data.candidateCount ?? 0} \u6761\uff0c\u672c\u6b21\u672a\u53d1\u73b0\u660e\u663e\u65b0\u53d8\u5316\uff0c\u5df2\u8df3\u8fc7\u6458\u8981\u3002` : `\u5019\u9009 ${data.candidateCount ?? 0} \u6761\uff0c\u4fdd\u5b58 ${data.itemCount ?? 0} \u6761\uff0c\u62a5\u544a ${data.reportCount ?? 0} \u6761\u3002`,
+        meta: { topic: firstTopic.title, insightHref: data.insightHref, provider: data.provider, noChange: data.noChange, overview: data.overview }
       });
     } catch (error) {
       pushResult({ label: "完整主题更新流程", ok: false, detail: error instanceof Error ? error.message : "完整主题更新测试失败" });
@@ -207,9 +262,12 @@ export function WorkspaceQa({
             <p className="mt-1 text-xs font-semibold text-[var(--app-text-muted)]">搜索和摘要测试可能消耗 Tavily / DeepSeek 额度；主题更新有 3 分钟本机冷却。</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={testSearch} disabled={Boolean(loading)} className="app-button-secondary disabled:cursor-wait disabled:opacity-60"><ShieldCheck size={17} />{loading === "search" ? "测试中" : "测试搜索"}</button>
-            <button type="button" onClick={testSummary} disabled={Boolean(loading)} className="app-button-secondary disabled:cursor-wait disabled:opacity-60"><Database size={17} />{loading === "summary" ? "测试中" : "测试摘要"}</button>
-            <button type="button" onClick={testTopicRun} disabled={Boolean(loading) || !firstTopic || cooldown > 0} className="app-button disabled:cursor-wait disabled:opacity-60"><Lightning size={17} weight="fill" />{cooldown ? `${cooldown} 秒后可测` : loading === "topic-run" ? "运行中" : "完整更新"}</button>
+            <button type="button" onClick={testLocalDailyBriefing} disabled={Boolean(loading)} className="app-button-secondary disabled:cursor-wait disabled:opacity-60"><FileText size={17} />{"\u7b80\u62a5\u68c0\u67e5"}</button>
+            <button type="button" onClick={testChangeLabels} disabled={Boolean(loading)} className="app-button-secondary disabled:cursor-wait disabled:opacity-60"><ShieldCheck size={17} />{"\u53d8\u5316\u6807\u7b7e"}</button>
+            <button type="button" onClick={testSearch} disabled={Boolean(loading)} className="app-button-secondary disabled:cursor-wait disabled:opacity-60"><ShieldCheck size={17} />{loading === "search" ? "\u6d4b\u8bd5\u4e2d" : "\u6d4b\u8bd5\u641c\u7d22"}</button>
+            <button type="button" onClick={testSummary} disabled={Boolean(loading)} className="app-button-secondary disabled:cursor-wait disabled:opacity-60"><Database size={17} />{loading === "summary" ? "\u6d4b\u8bd5\u4e2d" : "\u6d4b\u8bd5\u6458\u8981"}</button>
+            <button type="button" onClick={testDailyRefresh} disabled={Boolean(loading) || qaCooldown > 0} className="app-button-secondary disabled:cursor-wait disabled:opacity-60"><ClockCounterClockwise size={17} />{qaCooldown ? `${qaCooldown} \u79d2\u540e\u53ef\u6d4b` : loading === "daily-refresh" ? "\u68c0\u67e5\u4e2d" : "\u6bcf\u65e5\u68c0\u67e5"}</button>
+            <button type="button" onClick={testTopicRun} disabled={Boolean(loading) || !firstTopic || cooldown > 0} className="app-button disabled:cursor-wait disabled:opacity-60"><Lightning size={17} weight="fill" />{cooldown ? `${cooldown} \u79d2\u540e\u53ef\u6d4b` : loading === "topic-run" ? "\u8fd0\u884c\u4e2d" : "\u5b8c\u6574\u66f4\u65b0"}</button>
           </div>
         </div>
         <p className="mt-3 text-xs font-bold text-[var(--app-text-muted)]">当前测试主题：{firstTopic?.title ?? "暂无主题，请先创建一个关注主题。"}</p>

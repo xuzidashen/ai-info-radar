@@ -1,8 +1,10 @@
 import type { InfoItem, Keyword, WorkspaceZone, ZoneReport, ZoneTopic } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { collectTopicActivities } from "@/lib/services/topicActivityService";
 import { parseStructuredSummary, type StructuredSummary } from "@/lib/utils/summaryParser";
 import { qualityLabelFromInfo } from "@/lib/utils/infoQuality";
+import { extractChangeTypeMarker, formatChangeTypeLabel, stripChangeTypeMarker, type ChangeType } from "@/lib/utils/changeDetection";
 import {
   followTopics,
   getFollowTopic,
@@ -58,6 +60,8 @@ type TopicMetadata = {
   depth?: "简短" | "标准" | "深度";
   searchScope?: "只搜索已有内容" | "允许全网搜索";
   autoSummary?: boolean;
+  dailyAutoCheck?: boolean;
+  lastAutoCheckDate?: string;
   userDescription?: string;
   archivedAt?: string;
   deletedAt?: string;
@@ -236,13 +240,15 @@ export function mapInfoItemToArticle(item: InfoItemWithKeyword): RedesignArticle
     publishedAt: (item.publishedAt ?? item.createdAt).toISOString(),
     credibilityLabel: item.credibilityLabel,
     credibilityReason: item.credibilityReason,
-    qualityLabels: quality.labels,
+    qualityLabels: Array.from(new Set([changeLabelFromItem(item), ...quality.labels].filter((label): label is string => Boolean(label)))),
     sourceType: item.eventSubtype ?? quality.sourceType,
+    changeType: changeLabelFromItem(item),
+    changeReason: stripChangeTypeMarker(item.credibilityReason),
     topicTitle: item.keyword?.name
   };
 }
 
-function mapTopic(topic: TopicWithKeyword, latestReportId?: string): FollowTopic {
+function mapTopic(topic: TopicWithKeyword, latestReportId?: string, activity?: { todayItemCount: number; unreadCount?: number; highTrustCount: number; needsReviewCount: number; lastRunState: "success" | "failed" | "waiting"; lastRunAt: string | null; coolingDown: boolean; nextSuggestedUpdateAt: string | null }): FollowTopic {
   const { metadata, description } = parseTopicDescription(topic.description);
   const keyword = topic.keyword?.name ?? topic.name;
   const resultCount = (topic.keyword?._count.infoItems ?? 0) + (topic.keyword?._count.summaries ?? 0);
@@ -261,8 +267,39 @@ function mapTopic(topic: TopicWithKeyword, latestReportId?: string): FollowTopic
     articleIds: [],
     insightId: latestReportId ?? "generated",
     status: resultCount > 0 ? "fresh" : "scheduled",
-    lifecycle: metadata.lifecycle ?? "active"
+    lifecycle: metadata.lifecycle ?? "active",
+    todayItemCount: activity?.todayItemCount ?? 0,
+    unreadCount: activity?.unreadCount ?? activity?.todayItemCount ?? 0,
+    highTrustCount: activity?.highTrustCount ?? 0,
+    needsReviewCount: activity?.needsReviewCount ?? 0,
+    lastRunState: activity?.lastRunState ?? "waiting",
+    lastRunAt: activity?.lastRunAt ?? null,
+    coolingDown: activity?.coolingDown ?? false,
+    nextSuggestedUpdateAt: activity?.nextSuggestedUpdateAt ?? null,
+    dailyAutoCheck: Boolean(metadata.dailyAutoCheck)
   };
+}
+
+function normalizeTopicActivity(activity?: {
+  todayItemCount: number;
+  highTrustCount: number;
+  needsReviewCount: number;
+  articleIds: string[];
+  lastRunState: "success" | "failed" | "waiting";
+  lastRunAt: string | null;
+  coolingDown: boolean;
+  nextSuggestedUpdateAt: string | null;
+}) {
+  if (!activity) return undefined;
+  return {
+    ...activity,
+    unreadCount: activity.articleIds.length || activity.todayItemCount
+  };
+}
+
+function changeLabelFromItem(item: Pick<InfoItem, "eventType" | "credibilityReason">) {
+  const changeType = extractChangeTypeMarker(item.credibilityReason) ?? extractChangeTypeMarker(item.eventType);
+  return changeType ? formatChangeTypeLabel(changeType as ChangeType) : null;
 }
 
 function firstSentences(text: string, count = 3) {
@@ -366,7 +403,8 @@ async function topicsWithReports(limit = 20) {
     }
   }
 
-  return topics.map((topic) => mapTopic(topic, latestReportByTopic.get(topic.id)));
+  const activities = await collectTopicActivities(topics.map((topic) => ({ id: topic.id, keywordId: topic.keywordId })));
+  return topics.map((topic) => mapTopic(topic, latestReportByTopic.get(topic.id), normalizeTopicActivity(activities.get(topic.id))));
 }
 
 export async function getMainFlowHomeView() {
@@ -378,8 +416,20 @@ export async function getMainFlowHomeView() {
     }
   }
   const fallbackArticles = Array.from(fallbackArticleMap.values()).slice(0, 6);
+  const fallbackTopics: FollowTopic[] = followTopics.map((topic) => ({
+    ...topic,
+    todayItemCount: topic.resultCount,
+    unreadCount: topic.resultCount,
+    highTrustCount: Math.min(2, topic.resultCount),
+    needsReviewCount: 0,
+    lastRunState: topic.status === "fresh" ? "success" : "waiting",
+    lastRunAt: null,
+    coolingDown: false,
+    nextSuggestedUpdateAt: null,
+    dailyAutoCheck: false
+  }));
   const fallback = {
-    topics: followTopics,
+    topics: fallbackTopics,
     articles: fallbackArticles,
     insights: mockInsights.filter((insight) => followTopics.some((topic) => topic.id === insight.topicId)).slice(0, 4),
     stats: {
@@ -416,10 +466,11 @@ export async function getMainFlowHomeView() {
     const topicIds = new Set(topics.map((topic) => topic.id));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const [items, reports, todayItemCount] = await Promise.all([
+    const [items, reports, todayItemCount, topicActivities] = await Promise.all([
       keywordIds.length ? prisma.infoItem.findMany({ where: { keywordId: { in: keywordIds } }, orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }], take: 8, include: { keyword: true } }) : [],
       recentReports(16),
-      keywordIds.length ? prisma.infoItem.count({ where: { keywordId: { in: keywordIds }, createdAt: { gte: today } } }) : 0
+      keywordIds.length ? prisma.infoItem.count({ where: { keywordId: { in: keywordIds }, createdAt: { gte: today } } }) : 0,
+      collectTopicActivities(topics.map((topic) => ({ id: topic.id, keywordId: topic.keywordId })))
     ]);
     const articles = items.map((item) => {
       const topic = topicByKeyword.get(item.keywordId);
@@ -436,7 +487,7 @@ export async function getMainFlowHomeView() {
     });
 
     return {
-      topics: topics.map((topic) => mapTopic(topic, insights.find((insight) => insight.topicId === topic.id)?.id)),
+      topics: topics.map((topic) => mapTopic(topic, insights.find((insight) => insight.topicId === topic.id)?.id, normalizeTopicActivity(topicActivities.get(topic.id)))),
       articles,
       insights,
       stats: {
@@ -444,7 +495,7 @@ export async function getMainFlowHomeView() {
         todayItemCount,
         insightCount: filteredReports.length,
         lastUpdated: formatRelativeTime(topics[0].updatedAt),
-        updatedTopicCount: topics.filter((topic) => (topic.keyword?._count.infoItems ?? 0) > 0).length,
+        updatedTopicCount: Array.from(topicActivities.values()).filter((activity) => activity.todayItemCount > 0).length,
         highTrustCount: articles.filter((article) => article.qualityLabels?.includes("高可信")).length,
         needsReviewCount: articles.filter((article) => article.qualityLabels?.includes("需复核") || article.qualityLabels?.includes("低相关")).length
       }
@@ -548,9 +599,10 @@ export async function getMainFlowTopicDetail(id: string) {
         include: { zone: true }
       });
       const articles = topic.keyword?.infoItems.map((item) => mapInfoItemToArticle({ ...item, keyword: topic.keyword })) ?? [];
+      const activities = await collectTopicActivities([{ id: topic.id, keywordId: topic.keywordId }]);
 
       return {
-        topic: mapTopic(topic, report?.id),
+        topic: mapTopic(topic, report?.id, normalizeTopicActivity(activities.get(topic.id))),
         articles
       };
     }
@@ -733,6 +785,7 @@ export type TopicEditInput = {
   depth?: "简短" | "标准" | "深度";
   searchScope?: "只搜索已有内容" | "允许全网搜索";
   autoSummary?: boolean;
+  dailyAutoCheck?: boolean;
 };
 
 export async function updateMainFlowTopic(id: string, input: TopicEditInput) {
@@ -761,6 +814,7 @@ export async function updateMainFlowTopic(id: string, input: TopicEditInput) {
         depth: input.depth ?? parsed.metadata.depth,
         searchScope: input.searchScope ?? parsed.metadata.searchScope,
         autoSummary: input.autoSummary ?? parsed.metadata.autoSummary,
+        dailyAutoCheck: input.dailyAutoCheck ?? parsed.metadata.dailyAutoCheck ?? false,
         updatedVia: "main-flow"
       })
     },

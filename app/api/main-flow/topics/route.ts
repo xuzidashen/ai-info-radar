@@ -34,6 +34,7 @@ export async function POST(request: Request) {
       depth?: "简短" | "标准" | "深度";
       searchScope?: "只搜索已有内容" | "允许全网搜索";
       autoSummary?: boolean;
+      dailyAutoCheck?: boolean;
     };
     const title = body.title?.trim();
 
@@ -88,7 +89,8 @@ export async function POST(request: Request) {
       sourcePreference: body.sourcePreference ?? "官方优先",
       depth: body.depth ?? "标准",
       searchScope: body.searchScope ?? "允许全网搜索",
-      autoSummary: body.autoSummary ?? true
+      autoSummary: body.autoSummary ?? true,
+      dailyAutoCheck: body.dailyAutoCheck ?? false
     });
 
     return NextResponse.json({ topic: { id: topic.id, title: topic.name } });

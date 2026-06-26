@@ -18,6 +18,8 @@ export type RedesignArticle = {
   credibilityReason?: string | null;
   qualityLabels?: string[];
   sourceType?: string | null;
+  changeType?: string | null;
+  changeReason?: string | null;
 };
 
 export type FollowTopic = {
@@ -32,6 +34,15 @@ export type FollowTopic = {
   insightId: string;
   status: "fresh" | "scheduled";
   lifecycle?: "active" | "archived" | "deleted";
+  todayItemCount?: number;
+  unreadCount?: number;
+  highTrustCount?: number;
+  needsReviewCount?: number;
+  lastRunState?: "success" | "failed" | "waiting";
+  lastRunAt?: string | null;
+  coolingDown?: boolean;
+  nextSuggestedUpdateAt?: string | null;
+  dailyAutoCheck?: boolean;
 };
 
 export type Insight = {

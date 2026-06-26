@@ -21,7 +21,8 @@ import { getDefaultTemplate, getTemplateById } from "@/lib/templates/summaryTemp
 import type { Importance, KeywordCategory, SearchMode, Sentiment, TopicRunTriggerType, TopicRunType } from "@/lib/types";
 import { dedupeResults } from "@/lib/utils/dedupeResults";
 import { filterResults } from "@/lib/utils/filterResults";
-import { evaluateSearchResultQuality } from "@/lib/utils/infoQuality";
+import { canonicalizeUrl, evaluateSearchResultQuality } from "@/lib/utils/infoQuality";
+import { applyChangeTypeMarker, detectChangeType, isMeaningfulChangeType, type ChangeType } from "@/lib/utils/changeDetection";
 import { buildScoreReason, deriveItemTags, toDisplayScore } from "@/lib/utils/itemScoring";
 import { getSourceCredibility } from "@/lib/utils/sourceCredibility";
 import { parseStructuredSummary, structuredSummaryToMarkdown, type StructuredSummary } from "@/lib/utils/summaryParser";
@@ -36,6 +37,8 @@ type EnrichedSearchResult = NormalizedSearchResult & {
   qualityLabels?: string[];
   qualityStatuses?: string[];
   sourceType?: string;
+  changeType?: ChangeType;
+  changeReason?: string;
 };
 
 type SearchWithQuality = SearchRunResult & {
@@ -474,18 +477,64 @@ async function saveSearchAndSummary(input: {
   if (searchRun.processedResults.length === 0) {
     throw new Error("搜索结果已被排除词过滤为空，请调整主题偏好后重试。");
   }
+  const existingItems = await prisma.infoItem.findMany({
+    where: { keywordId: input.keywordId },
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+    take: 80
+  });
+  const existingUrls = new Set(existingItems.map((item) => canonicalizeUrl(item.url)).filter(Boolean));
+  const evaluatedResults = searchRun.processedResults.map((result) => {
+    const detection = detectChangeType({
+      result,
+      keywordName: searchContext.primaryKeyword,
+      extraKeywords: searchContext.keywords,
+      existingItems
+    });
+    return {
+      ...result,
+      changeType: detection.changeType,
+      changeReason: detection.reason,
+      credibility: detection.quality.credibility,
+      qualityLabels: Array.from(new Set([detection.label, ...(result.qualityLabels ?? detection.quality.labels)].filter(Boolean))),
+      qualityStatuses: Array.from(new Set([detection.changeType, ...(result.qualityStatuses ?? detection.quality.statuses)].filter(Boolean))),
+      sourceType: result.sourceType ?? detection.quality.sourceType
+    };
+  });
+  const newResults = evaluatedResults.filter((result) => isMeaningfulChangeType(result.changeType) && !existingUrls.has(canonicalizeUrl(result.url)));
+  const skippedResults = evaluatedResults
+    .filter((result) => !newResults.includes(result))
+    .map((result) => ({ title: result.title, url: result.url, changeType: result.changeType, reason: result.changeReason }));
+  searchRun.processedResults = newResults;
   const now = new Date();
+
+  if (newResults.length === 0) {
+    await prisma.keyword.update({
+      where: { id: input.keywordId },
+      data: { lastSearchedAt: now }
+    });
+
+    return {
+      searchRun,
+      summaryRun: null,
+      savedItems: [],
+      savedSummary: null,
+      keywordCategory,
+      searchContext,
+      noChange: true,
+      skippedResults
+    };
+  }
 
   const savedItems = await prisma.$transaction(async (tx) => {
     const createdItems = await Promise.all(
-      searchRun.processedResults.map((result, index) =>
+      newResults.map((result, index) =>
         tx.infoItem.create({
           data: {
             title: result.title,
             source: result.source,
             url: result.url,
             publishedAt: normalizePublishedAt(result.publishedAt),
-            summary: result.content || result.rawContent || "该来源未返回可用摘要。",
+            summary: result.content || result.rawContent || "\u8be5\u6765\u6e90\u672a\u8fd4\u56de\u53ef\u7528\u6458\u8981\u3002",
             importance: inferImportance(index, result.score),
             sentiment: pick(sentimentPool),
             provider: searchRun.provider,
@@ -494,8 +543,8 @@ async function saveSearchAndSummary(input: {
             fetchedAt: now,
             credibilityScore: result.credibility.score,
             credibilityLabel: result.credibility.label,
-            credibilityReason: `${result.qualityLabels?.join("、") || "可参考"}。${result.credibility.reason}`,
-            eventType: result.qualityStatuses?.join(",") || "new",
+            credibilityReason: applyChangeTypeMarker(result.changeType ?? "new", `${result.changeReason ?? "\u9996\u6b21\u51fa\u73b0\u7684\u65b0\u5185\u5bb9\u3002"} ${result.qualityLabels?.join("\u3001") || "\u53ef\u53c2\u8003"}\u3002${result.credibility.reason}`),
+            eventType: result.qualityStatuses?.join(",") || result.changeType || "new",
             eventSubtype: result.sourceType || null,
             keywordId: input.keywordId
           }
@@ -815,7 +864,63 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       topic,
       keywordId: keyword.id
     });
-    const structuredSummary = parseStructuredSummary(commonRun.summaryRun.content);
+
+    if (commonRun.noChange) {
+      const pipelineStages = buildPipelineStages({
+        rawResultCount: commonRun.searchRun.rawResultCount,
+        filteredCount: commonRun.searchRun.filteredCount,
+        dedupedCount: commonRun.searchRun.dedupedCount,
+        savedItemCount: 0,
+        summaryLength: 0,
+        reportCount: 0
+      }).map((stage) => stage.stage === "summarize" || stage.stage === "report" ? { ...stage, status: "skipped", outputCount: 0, detail: "\u672c\u6b21\u672a\u53d1\u73b0\u660e\u663e\u65b0\u53d8\u5316\uff0c\u5df2\u8df3\u8fc7\u6458\u8981\u548c\u62a5\u544a\u751f\u6210\u3002" } : stage);
+      metrics = {
+        searchProvider: commonRun.searchRun.provider,
+        summaryProvider: null,
+        fallbackUsed: commonRun.searchRun.fallbackUsed,
+        rawResultCount: commonRun.searchRun.rawResultCount,
+        filteredCount: commonRun.searchRun.filteredCount,
+        dedupedCount: commonRun.searchRun.dedupedCount,
+        savedItemCount: 0,
+        reportCount: 0,
+        metadata: {
+          topicId: topic.id,
+          keywordId: keyword.id,
+          noChange: true,
+          skippedSummary: true,
+          skippedResults: commonRun.skippedResults,
+          queryText: commonRun.searchContext.queryText,
+          queryTexts: commonRun.searchContext.queryTexts,
+          keywords: commonRun.searchContext.keywords,
+          presetNames: commonRun.searchContext.presetNames,
+          pipelineStages,
+          scheduleId: options.scheduleId,
+          retryOfRunLogId: options.retryOfRunLogId
+        }
+      };
+      await prisma.zoneTopic.update({
+        where: { id: topic.id },
+        data: { updatedAt: new Date() }
+      });
+      const savedRunLog = metrics.fallbackUsed ? await markRunFallback(runLog.id, metrics) : await markRunSuccess(runLog.id, metrics);
+
+      return {
+        mode: "search" as const,
+        report: null,
+        infoItems: [],
+        summary: null,
+        noChange: true as const,
+        fallbackUsed: metrics.fallbackUsed,
+        runLog: savedRunLog
+      };
+    }
+
+    if (!commonRun.summaryRun || !commonRun.savedSummary) {
+      throw new Error("\u6458\u8981\u751f\u6210\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002");
+    }
+    const summaryRun = commonRun.summaryRun;
+    const savedSummary = commonRun.savedSummary;
+    const structuredSummary = parseStructuredSummary(summaryRun.content);
     const summaryMarkdown = structuredSummaryToMarkdown(structuredSummary);
     const selectedTemplate = getTemplateById(topic.summaryTemplate);
     const template =
@@ -827,8 +932,8 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
 
     metrics = {
       searchProvider: commonRun.searchRun.provider,
-      summaryProvider: commonRun.summaryRun.provider,
-      fallbackUsed: commonRun.searchRun.fallbackUsed || commonRun.summaryRun.fallbackUsed,
+      summaryProvider: summaryRun.provider,
+      fallbackUsed: commonRun.searchRun.fallbackUsed || summaryRun.fallbackUsed,
       rawResultCount: commonRun.searchRun.rawResultCount,
       filteredCount: commonRun.searchRun.filteredCount,
       dedupedCount: commonRun.searchRun.dedupedCount,
@@ -866,7 +971,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         filteredCount: commonRun.searchRun.filteredCount,
         dedupedCount: commonRun.searchRun.dedupedCount,
         savedItemCount: reportItems.length,
-        summaryLength: commonRun.summaryRun.content.length,
+        summaryLength: summaryRun.content.length,
         factorCount: factor.factorRun.itemFactors.length,
         reportCount: reportEnabled ? 1 : 0
       });
@@ -875,7 +980,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         topicName: topic.name,
         keywordId: keyword.id,
         searchProvider: commonRun.searchRun.provider,
-        summaryProvider: commonRun.summaryRun.provider,
+        summaryProvider: summaryRun.provider,
         factorProvider: factor.factorRun.provider,
         fallbackUsed: metrics.fallbackUsed,
         runLogId: runLog.id,
@@ -940,7 +1045,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
         mode: "analysis" as const,
         report,
         infoItems: reportItems.map(serializeInfoItem),
-        summary: serializeSummary(commonRun.savedSummary),
+        summary: serializeSummary(savedSummary),
         dailySignal: serializeDailySignal(factor.dailySignal),
         fallbackUsed: metrics.fallbackUsed,
         runLog: savedRunLog
@@ -954,7 +1059,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       filteredCount: commonRun.searchRun.filteredCount,
       dedupedCount: commonRun.searchRun.dedupedCount,
       savedItemCount: reportItems.length,
-      summaryLength: commonRun.summaryRun.content.length,
+      summaryLength: summaryRun.content.length,
       reportCount: reportEnabled ? 1 : 0
     });
     const reportMetadata = buildReportMetadata({
@@ -962,7 +1067,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       topicName: topic.name,
       keywordId: keyword.id,
       searchProvider: commonRun.searchRun.provider,
-      summaryProvider: commonRun.summaryRun.provider,
+      summaryProvider: summaryRun.provider,
       fallbackUsed: metrics.fallbackUsed,
       runLogId: runLog.id,
       items: reportItems,
@@ -1021,7 +1126,7 @@ export async function runZoneTopic(topicId: string, options: RunOptions = {}) {
       mode: "search" as const,
       report,
       infoItems: reportItems.map(serializeInfoItem),
-      summary: serializeSummary(commonRun.savedSummary),
+      summary: serializeSummary(savedSummary),
       fallbackUsed: metrics.fallbackUsed,
       runLog: savedRunLog
     };

@@ -40,6 +40,7 @@ type TopicPreferences = {
   depth: "简短" | "标准" | "深度";
   searchScope: "只搜索已有内容" | "允许全网搜索";
   autoSummary: boolean;
+  dailyAutoCheck: boolean;
 };
 
 type RunTopicResponse = {
@@ -51,6 +52,7 @@ type RunTopicResponse = {
   reportCount?: number;
   candidateCount?: number;
   overview?: string;
+  noChange?: boolean;
   provider?: {
     searchProvider?: string | null;
     summaryProvider?: string | null;
@@ -96,7 +98,8 @@ function defaultTopicPreferences(): TopicPreferences {
     sourcePreference: "官方优先",
     depth: "标准",
     searchScope: "允许全网搜索",
-    autoSummary: true
+    autoSummary: true,
+    dailyAutoCheck: false
   };
 }
 
@@ -117,7 +120,8 @@ function parseDescriptionWithPreferences(value: string) {
         sourcePreference: parsed.sourcePreference === "媒体优先" || parsed.sourcePreference === "全网" ? parsed.sourcePreference : defaults.sourcePreference,
         depth: parsed.depth === "简短" || parsed.depth === "深度" ? parsed.depth : defaults.depth,
         searchScope: parsed.searchScope === "只搜索已有内容" ? parsed.searchScope : defaults.searchScope,
-        autoSummary: typeof parsed.autoSummary === "boolean" ? parsed.autoSummary : defaults.autoSummary
+        autoSummary: typeof parsed.autoSummary === "boolean" ? parsed.autoSummary : defaults.autoSummary,
+        dailyAutoCheck: typeof parsed.dailyAutoCheck === "boolean" ? parsed.dailyAutoCheck : defaults.dailyAutoCheck
       }
     };
   } catch {
@@ -471,6 +475,7 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
   const [depth, setDepth] = useState<TopicPreferences["depth"]>("标准");
   const [searchScope, setSearchScope] = useState<TopicPreferences["searchScope"]>("允许全网搜索");
   const [autoSummary, setAutoSummary] = useState(true);
+  const [dailyAutoCheck, setDailyAutoCheck] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -500,7 +505,8 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
           sourcePreference,
           depth,
           searchScope,
-          autoSummary
+          autoSummary,
+          dailyAutoCheck
         })
       });
 
@@ -518,7 +524,8 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
             sourcePreference,
             depth,
             searchScope,
-            autoSummary
+            autoSummary,
+            dailyAutoCheck
           }),
           keywords: keywordList.length ? keywordList : [title.trim()],
           category: direction,
@@ -528,6 +535,7 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
           insightId: "generated",
           status: "scheduled",
           lifecycle: "active",
+          dailyAutoCheck,
           createdAt: new Date().toISOString()
         });
       }
@@ -544,7 +552,8 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
           sourcePreference,
           depth,
           searchScope,
-          autoSummary
+          autoSummary,
+          dailyAutoCheck
         }),
         keywords: keywordList.length ? keywordList : [title.trim()],
         category: direction,
@@ -554,6 +563,7 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
         insightId: "generated",
         status: "scheduled",
         lifecycle: "active",
+        dailyAutoCheck,
         createdAt: new Date().toISOString()
       });
       setError("已使用本地兜底保存，联网后可再次同步。");
@@ -621,6 +631,10 @@ export function TopicCreateWizard({ initialTitle = "", initialCategory, initialK
                 <span>自动总结</span>
                 <input type="checkbox" checked={autoSummary} onChange={(event) => setAutoSummary(event.target.checked)} className="h-5 w-5 accent-[#2563eb]" />
               </label>
+              <label className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[#f0d9a9] bg-[#fff8ea] px-4 text-sm font-black text-[#8a5b08]">
+                <span>每日自动检查 <em className="block text-[11px] not-italic font-bold text-[#9a6a18]">默认关闭，会消耗搜索额度</em></span>
+                <input type="checkbox" checked={dailyAutoCheck} onChange={(event) => setDailyAutoCheck(event.target.checked)} className="h-5 w-5 accent-[#2563eb]" />
+              </label>
             </div>
             <div className="mt-6 rounded-lg bg-[var(--app-surface-muted)] p-4">
               <strong className="block text-base font-black">{title || "未填写话题"}</strong>
@@ -654,6 +668,7 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
   const [depth, setDepth] = useState<TopicPreferences["depth"]>(parsedTopic.preferences.depth);
   const [searchScope, setSearchScope] = useState<TopicPreferences["searchScope"]>(parsedTopic.preferences.searchScope);
   const [autoSummary, setAutoSummary] = useState(parsedTopic.preferences.autoSummary);
+  const [dailyAutoCheck, setDailyAutoCheck] = useState(parsedTopic.preferences.dailyAutoCheck);
   const [saving, setSaving] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -668,7 +683,8 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
         sourcePreference,
         depth,
         searchScope,
-        autoSummary
+        autoSummary,
+        dailyAutoCheck
       };
       const input = {
         title: title.trim(),
@@ -680,7 +696,8 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
         sourcePreference: preferences.sourcePreference,
         depth: preferences.depth,
         searchScope: preferences.searchScope,
-        autoSummary: preferences.autoSummary
+        autoSummary: preferences.autoSummary,
+        dailyAutoCheck: preferences.dailyAutoCheck
       };
       if (topic.id.startsWith("custom-")) {
         saveStoredTopic({ ...topic, ...input, updatedAt: "刚刚保存", createdAt: new Date().toISOString() });
@@ -755,6 +772,10 @@ export function TopicEditForm({ topic }: { topic: FollowTopic }) {
           <span>自动总结</span>
           <input type="checkbox" checked={autoSummary} onChange={(event) => setAutoSummary(event.target.checked)} className="h-5 w-5 accent-[#2563eb]" />
         </label>
+        <label className="mt-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[#f0d9a9] bg-[#fff8ea] px-4 text-sm font-black text-[#8a5b08]">
+          <span>每日自动检查 <em className="block text-[11px] not-italic font-bold text-[#9a6a18]">默认关闭，每个主题每天最多自动更新 1 次</em></span>
+          <input type="checkbox" checked={dailyAutoCheck} onChange={(event) => setDailyAutoCheck(event.target.checked)} className="h-5 w-5 accent-[#2563eb]" />
+        </label>
         <div className="mt-8 flex flex-col gap-2 border-t border-[var(--app-line)] pt-5 sm:flex-row sm:justify-end">
           <Link href={`/topics/${topic.id}`} className="app-button-secondary justify-center">取消</Link>
           <button type="submit" disabled={saving || !title.trim()} className="app-button justify-center disabled:opacity-60">{saving ? "保存中" : "保存修改"}</button>
@@ -787,7 +808,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
   const [resultHref, setResultHref] = useState<string | null>(null);
   const [contentHref, setContentHref] = useState<string | null>(null);
   const [runMessage, setRunMessage] = useState("");
-  const [runResult, setRunResult] = useState<{ itemCount: number; reportCount: number; candidateCount: number; overview: string; fallbackUsed: boolean; searchProvider?: string | null; summaryProvider?: string | null } | null>(null);
+  const [runResult, setRunResult] = useState<{ itemCount: number; reportCount: number; candidateCount: number; overview: string; fallbackUsed: boolean; noChange?: boolean; searchProvider?: string | null; summaryProvider?: string | null } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [busy, setBusy] = useState(false);
@@ -860,6 +881,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
         candidateCount: data.candidateCount ?? data.itemCount ?? 0,
         overview: data.overview || "本次更新已完成，请查看完整分析结果。",
         fallbackUsed: Boolean(data.localFallback || data.provider?.fallbackUsed),
+        noChange: Boolean(data.noChange),
         searchProvider: data.provider?.searchProvider,
         summaryProvider: data.provider?.summaryProvider
       });
@@ -953,6 +975,7 @@ export function TopicDetailClient({ id, topic, articles }: { id: string; topic: 
           <p className="font-semibold leading-6">内容深度：{parsedDescription.preferences.depth}</p>
           <p className="font-semibold leading-6">搜索范围：{parsedDescription.preferences.searchScope}</p>
           <p className="font-semibold leading-6">自动总结：{parsedDescription.preferences.autoSummary ? "开启" : "关闭"}</p>
+          <p className="font-semibold leading-6">每日自动检查：{parsedDescription.preferences.dailyAutoCheck ? "开启" : "关闭"}</p>
         </div>
       </details>
 

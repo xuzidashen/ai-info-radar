@@ -54,8 +54,12 @@ function readInfoItemCount(result: MainFlowRunResult) {
 }
 
 function readOverview(result: MainFlowRunResult) {
+  if ("noChange" in result && result.noChange) {
+    return "\u672c\u6b21\u672a\u53d1\u73b0\u660e\u663e\u65b0\u53d8\u5316\u3002\u5019\u9009\u5185\u5bb9\u5df2\u8bb0\u5f55\uff0c\u7cfb\u7edf\u5df2\u8df3\u8fc7\u6458\u8981\u751f\u6210\uff0c\u907f\u514d\u6c61\u67d3\u9996\u9875\u52a8\u6001\u3002";
+  }
+
   const content = "summary" in result ? result.summary?.content : null;
-  return content ? parseStructuredSummary(content).overview : "本次更新已完成，请查看完整分析结果。";
+  return content ? parseStructuredSummary(content).overview : "\u672c\u6b21\u66f4\u65b0\u5df2\u5b8c\u6210\uff0c\u8bf7\u67e5\u770b\u5b8c\u6574\u5206\u6790\u7ed3\u679c\u3002";
 }
 
 export async function POST(_request: Request, context: RouteContext) {
@@ -91,8 +95,11 @@ export async function POST(_request: Request, context: RouteContext) {
     const itemCount = result.runLog.savedItemCount || readInfoItemCount(result);
     const reportCount = result.runLog.reportCount || (reportId ? 1 : 0);
 
+    const noChange = "noChange" in result && Boolean(result.noChange);
+
     return NextResponse.json({
-      message: `已完成本次更新：发现 ${itemCount} 条新内容，生成 ${reportCount} 条分析结果。`,
+      message: noChange ? "\u672c\u6b21\u672a\u53d1\u73b0\u660e\u663e\u65b0\u53d8\u5316\u3002" : `\u5df2\u5b8c\u6210\u672c\u6b21\u66f4\u65b0\uff1a\u53d1\u73b0 ${itemCount} \u6761\u65b0\u5185\u5bb9\uff0c\u751f\u6210 ${reportCount} \u6761\u5206\u6790\u7ed3\u679c\u3002`,
+      noChange,
       reportId,
       runLogId: result.runLog.id,
       insightHref: reportId ? `/insights/${reportId}` : `/topics/${id}`,

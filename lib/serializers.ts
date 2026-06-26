@@ -34,6 +34,7 @@ import type {
   ZoneReportDTO,
   ZoneTopicDTO
 } from "@/lib/types";
+import { extractChangeTypeMarker, stripChangeTypeMarker } from "@/lib/utils/changeDetection";
 
 type KeywordWithCounts = Keyword & {
   _count?: {
@@ -144,6 +145,8 @@ export function serializeInfoItem(item: InfoItem): InfoItemDTO {
     credibilityReason: item.credibilityReason,
     eventType: item.eventType,
     eventSubtype: item.eventSubtype,
+    changeType: extractChangeTypeMarker(item.credibilityReason) ?? extractChangeTypeMarker(item.eventType),
+    changeReason: stripChangeTypeMarker(item.credibilityReason),
     sentimentScore: item.sentimentScore,
     impactScore: item.impactScore,
     riskScore: item.riskScore,
